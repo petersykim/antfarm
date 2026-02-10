@@ -268,11 +268,20 @@ function getActiveStepId(run) {
 
 function formatTS(ts) {
   if (!ts) return '';
-  // Handle SQLite timestamps like "YYYY-MM-DD HH:MM:SS" by converting to ISO-like local time.
-  // JS Date parsing is inconsistent for the space-separated form.
+
+  // Normalize SQLite timestamps. Important: Antfarm stores many timestamps as UTC
+  // using SQLite `datetime('now','utc')`, which returns "YYYY-MM-DD HH:MM:SS"
+  // *without* a timezone marker. Treat that space-form as UTC.
   if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(ts)) {
-    return new Date(ts.replace(' ', 'T')).toLocaleString();
+    return new Date(ts.replace(' ', 'T') + 'Z').toLocaleString();
   }
+
+  // If we ever receive an ISO-like string missing timezone (rare), treat as UTC.
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?$/.test(ts)) {
+    return new Date(ts + 'Z').toLocaleString();
+  }
+
+  // Otherwise let Date parse it (handles ISO with Z or explicit offsets).
   return new Date(ts).toLocaleString();
 }
 
