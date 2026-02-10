@@ -15,31 +15,55 @@ agents:
     name: Planner
     role: analysis
     description: Plans minimal viable scaffold + first feature.
+    workspace:
+      baseDir: agents/planner
+      files:
+        AGENTS.md: agents/planner/AGENTS.md
 
   - id: setup
     name: Setup
     role: setup
     description: Scaffolds project with build/test/CI and baseline.
+    workspace:
+      baseDir: agents/setup
+      files:
+        AGENTS.md: agents/setup/AGENTS.md
 
   - id: developer
     name: Developer
     role: coding
     description: Implements first feature with tests.
+    workspace:
+      baseDir: agents/developer
+      files:
+        AGENTS.md: agents/developer/AGENTS.md
 
   - id: verifier
     name: Verifier
     role: verification
     description: Validates acceptance criteria and tests.
+    workspace:
+      baseDir: agents/verifier
+      files:
+        AGENTS.md: agents/verifier/AGENTS.md
 
   - id: tester
     name: Tester
     role: testing
     description: Runs E2E tests.
+    workspace:
+      baseDir: agents/tester
+      files:
+        AGENTS.md: agents/tester/AGENTS.md
 
   - id: reviewer
     name: Reviewer
     role: analysis
     description: Reviews code quality.
+    workspace:
+      baseDir: agents/reviewer
+      files:
+        AGENTS.md: agents/reviewer/AGENTS.md
 
 steps:
   - id: plan

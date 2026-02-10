@@ -15,26 +15,46 @@ agents:
     name: Designer
     role: design
     description: Creates designs and component specs.
+    workspace:
+      baseDir: agents/designer
+      files:
+        AGENTS.md: agents/designer/AGENTS.md
 
   - id: developer
     name: Developer
     role: coding
     description: Implements UI with accessibility and responsiveness.
+    workspace:
+      baseDir: agents/developer
+      files:
+        AGENTS.md: agents/developer/AGENTS.md
 
   - id: verifier
     name: Verifier
     role: verification
     description: Validates UI matches design and meets criteria.
+    workspace:
+      baseDir: agents/verifier
+      files:
+        AGENTS.md: agents/verifier/AGENTS.md
 
   - id: tester
     name: Tester
     role: testing
     description: Runs E2E UI tests.
+    workspace:
+      baseDir: agents/tester
+      files:
+        AGENTS.md: agents/tester/AGENTS.md
 
   - id: reviewer
     name: Reviewer
     role: analysis
     description: Reviews design fidelity and code quality.
+    workspace:
+      baseDir: agents/reviewer
+      files:
+        AGENTS.md: agents/reviewer/AGENTS.md
 
 steps:
   - id: design
