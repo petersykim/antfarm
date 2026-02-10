@@ -451,20 +451,20 @@ async function main() {
       if (lc.verifyEach && lc.verifyStep === failedStep.step_id) {
         // Reset the loop step (developer) to pending so it re-claims the story and populates context
         db.prepare(
-          "UPDATE steps SET status = 'pending', current_story_id = NULL, updated_at = datetime('now') WHERE id = ?"
+          "UPDATE steps SET status = 'pending', current_story_id = NULL, updated_at = datetime('now', 'utc') WHERE id = ?"
         ).run(loopStep.id);
         // Reset verify step to waiting (fires after developer completes)
         db.prepare(
-          "UPDATE steps SET status = 'waiting', current_story_id = NULL, updated_at = datetime('now') WHERE id = ?"
+          "UPDATE steps SET status = 'waiting', current_story_id = NULL, updated_at = datetime('now', 'utc') WHERE id = ?"
         ).run(failedStep.id);
         // Reset any failed stories to pending
         db.prepare(
-          "UPDATE stories SET status = 'pending', updated_at = datetime('now') WHERE run_id = ? AND status = 'failed'"
+          "UPDATE stories SET status = 'pending', updated_at = datetime('now', 'utc') WHERE run_id = ? AND status = 'failed'"
         ).run(run.id);
 
         // Reset run to running
         db.prepare(
-          "UPDATE runs SET status = 'running', updated_at = datetime('now') WHERE id = ?"
+          "UPDATE runs SET status = 'running', updated_at = datetime('now', 'utc') WHERE id = ?"
         ).run(run.id);
 
         // Ensure crons are running for this workflow
