@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Antfarm Glass Bowl - Live Workflow Visualization</title>
+  <meta name="description" content="Real-time visualization of Antfarm workflows">
+
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    body {
+      background: #3d3328;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    #canvas-container {
+      width: 100vw;
+      height: 100vh;
+      position: relative;
+    }
+
+    #loading {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: #c9b896;
+      font-size: 1.2rem;
+      text-align: center;
+      z-index: 10;
+      background: rgba(61, 51, 40, 0.9);
+      padding: 2rem;
+      border-radius: 8px;
+      border: 1px solid #5a4d3a;
+    }
+
+    #loading::before {
+      content: '🐜';
+      display: block;
+      font-size: 3rem;
+      margin-bottom: 1rem;
+      animation: pulse 1s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 0.4; }
+      50% { opacity: 1; }
+    }
+
+    #error {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: #ff6b6b;
+      background: rgba(61, 51, 40, 0.95);
+      padding: 2rem;
+      border-radius: 8px;
+      border: 1px solid #ff6b6b;
+      display: none;
+      max-width: 80%;
+      z-index: 20;
+    }
+
+    #error h2 {
+      margin-bottom: 1rem;
+      font-size: 1.3rem;
+    }
+
+    #error button {
+      margin-top: 1rem;
+      padding: 0.5rem 1rem;
+      background: #5a4d3a;
+      color: #c9b896;
+      border: 1px solid #7a6d5a;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 1rem;
+    }
+
+    #error button:hover {
+      background: #7a6d5a;
+    }
+  </style>
+</head>
+<body>
+  <div id="canvas-container">
+    <div id="loading">Loading database...</div>
+    <div id="error">
+      <h2>Database Error</h2>
+      <p id="error-message"></p>
+      <button onclick="location.reload()">Refresh</button>
+    </div>
+  </div>
+
+  <!-- PixiJS v7 from CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/pixi.js@7.x/dist/pixi.min.js"></script>
+  <!-- sql.js with SQLite support -->
+  <script src="https://cdn.jsdelivr.net/npm/sql.js@1.8.0/dist/sql-wasm.js"></script>
+
+  <script>
+    // Global variables
+    let app = null;
+    let db = null;
+    let refreshTimer = null;
+    const REFRESH_INTERVAL = 5000; // 5 seconds
+
+    // Status colors
+    const STATUS_COLORS = {
+      running: 0x4caf50,  // green - healthy
+      done: 0x4caf50,     // green
+      success: 0x4caf50,  // green
+      waiting: 0xffc107,  // yellow
+      pending: 0xffc107,  // yellow
+      failed: 0xff5252,   // red
+      error: 0xff5252     // red
+    };
+
+    // Tunnel color
+    const TUNNEL_COLOR = 0x2a2218;
+
+    // Initialize the application
+    async function init() {
+      try {
+        // Create PixiJS application
+        app = new PIXI.Application({
+          resizeTo: window,
+          backgroundColor: 0x3d3328, // Dirt color
+          antialias: true,
+          resolution: window.devicePixelRatio || 1,
+          autoDensity: true
+        });
+
+        document.getElementById('canvas-container').appendChild(app.view);
+
+        // Initialize SQLite
+        await initDatabase();
+
+        // Hide loading indicator
+        document.getElementById('loading').style.display = 'none';
+
+        // Initial render
+        await renderVisualization();
+
+        // Start auto-refresh
+        startAutoRefresh();
+
+      } catch (error) {
+        showError('Failed to initialize: ' + error.message);
+      }
+    }
+
+    // Initialize SQL.js database
+    async function initDatabase() {
+      // sql.js loads SQL as a global
+      const SQL = await initSqlJs({
+        locateFile: file => `https://cdn.jsdelivr.net/npm/sql.js@1.8.0/dist/${file}`
+      });
+
+      // Try to load the database from local file
+      // Note: In a real browser environment, we'll need a way to access the file.
+      // For now, we create an empty DB and provide instructions for loading real data.
+      const dbPath = '~/.openclaw/antfarm/antfarm.db';
+
+      // Check if we have a file input handler
+      if (window.location.protocol === 'file:') {
+        // Running as local file - create sample data for demo
+        db = new SQL.Database();
+        createSampleSchema();
+        console.log('Running in file:// mode. Using sample data.');
+        console.log('To view real data, serve this file from a server with DB access.');
+      } else {
+        // Try to fetch the database file
+        try {
+          const response = await fetch('/antfarm.db');
+          if (response.ok) {
+            const arrayBuffer = await response.arrayBuffer();
+            const uint8Array = new Uint8Array(arrayBuffer);
+            db = new SQL.Database(uint8Array);
+          } else {
+            // Create sample data if DB not available
+            db = new SQL.Database();
+            createSampleSchema();
+          }
+        } catch (e) {
+          // Create sample data if fetch fails
+          db = new SQL.Database();
+          createSampleSchema();
+        }
+      }
+    }
+
+    // Create sample schema and data for demo purposes
+    function createSampleSchema() {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS runs (
+          id TEXT PRIMARY KEY,
+          workflow_id TEXT NOT NULL,
+          task TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'running',
+          context TEXT NOT NULL DEFAULT '{}',
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS steps (
+          id TEXT PRIMARY KEY,
+          run_id TEXT NOT NULL REFERENCES runs(id),
+          step_id TEXT NOT NULL,
+          agent_id TEXT NOT NULL,
+          step_index INTEGER NOT NULL,
+          input_template TEXT NOT NULL,
+          expects TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'waiting',
+          output TEXT,
+          retry_count INTEGER DEFAULT 0,
+          max_retries INTEGER DEFAULT 2,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+      `);
+
+      // Insert sample data for visualization
+      const now = new Date().toISOString();
+      db.exec(`
+        INSERT OR IGNORE INTO runs VALUES ('run001', 'feature-dev', 'Add OAuth', 'running', '{}', '${now}', '${now}');
+        INSERT OR IGNORE INTO runs VALUES ('run002', 'bug-fix', 'Fix login bug', 'done', '{}', '${now}', '${now}');
+        INSERT OR IGNORE INTO runs VALUES ('run003', 'security-audit', 'Audit API', 'failed', '{}', '${now}', '${now}');
+
+        INSERT OR IGNORE INTO steps VALUES ('step001', 'run001', 'plan', 'planner', 0, '', '', 'done', '', 0, 2, '${now}', '${now}');
+        INSERT OR IGNORE INTO steps VALUES ('step002', 'run001', 'implement', 'developer', 1, '', '', 'running', '', 0, 2, '${now}', '${now}');
+        INSERT OR IGNORE INTO steps VALUES ('step003', 'run001', 'verify', 'verifier', 2, '', '', 'waiting', '', 0, 2, '${now}', '${now}');
+
+        INSERT OR IGNORE INTO steps VALUES ('step004', 'run002', 'plan', 'planner', 0, '', '', 'done', '', 0, 2, '${now}', '${now}');
+        INSERT OR IGNORE INTO steps VALUES ('step005', 'run002', 'implement', 'developer', 1, '', '', 'done', '', 0, 2, '${now}', '${now}');
+
+        INSERT OR IGNORE INTO steps VALUES ('step006', 'run003', 'scan', 'scanner', 0, '', '', 'done', '', 0, 2, '${now}', '${now}');
+        INSERT OR IGNORE INTO steps VALUES ('step007', 'run003', 'fix', 'fixer', 1, '', '', 'failed', 'Permission denied', 2, 2, '${now}', '${now}');
+      `);
+    }
+
+    // Show error message
+    function showError(message) {
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('error').style.display = 'block';
+      document.getElementById('error-message').textContent = message;
+    }
+
+    // Fetch active runs from database
+    function getActiveRuns() {
+      const stmt = db.prepare('SELECT * FROM runs ORDER BY created_at DESC');
+      const runs = [];
+      while (stmt.step()) {
+        runs.push(stmt.getAsObject());
+      }
+      stmt.free();
+      return runs;
+    }
+
+    // Fetch steps for a run
+    function getStepsForRun(runId) {
+      const stmt = db.prepare('SELECT * FROM steps WHERE run_id = ? ORDER BY step_index');
+      stmt.bind([runId]);
+      const steps = [];
+      while (stmt.step()) {
+        steps.push(stmt.getAsObject());
+      }
+      stmt.free();
+      return steps;
+    }
+
+    // Render the visualization
+    async function renderVisualization() {
+      // Clear the stage
+      app.stage.removeChildren();
+
+      // Get runs and steps
+      const runs = getActiveRuns();
+
+      if (runs.length === 0) {
+        renderNoData();
+        return;
+      }
+
+      // Calculate layout
+      const padding = 40;
+      const runSpacing = 150;
+      const stepSpacing = 80;
+      const startY = padding + 50;
+      const startX = padding;
+
+      // Draw title
+      const title = new PIXI.Text('Antfarm Glass Bowl', {
+        fontFamily: 'Arial',
+        fontSize: 24,
+        fill: 0xc9b896,
+        fontWeight: 'bold'
+      });
+      title.x = padding;
+      title.y = 15;
+      app.stage.addChild(title);
+
+      // Draw each run
+      runs.forEach((run, runIndex) => {
+        const runY = startY + runIndex * runSpacing;
+
+        // Draw run container
+        const runContainer = new PIXI.Container();
+
+        // Run label
+        const runLabel = new PIXI.Text(`${run.workflow_id}: ${run.task}`, {
+          fontFamily: 'Arial',
+          fontSize: 14,
+          fill: 0xc9b896,
+          fontWeight: 'bold'
+        });
+        runLabel.x = startX;
+        runLabel.y = runY - 25;
+        runContainer.addChild(runLabel);
+
+        // Get steps for this run
+        const steps = getStepsForRun(run.id);
+
+        // Draw tunnel line connecting steps
+        if (steps.length > 1) {
+          const tunnel = new PIXI.Graphics();
+          tunnel.lineStyle(3, TUNNEL_COLOR);
+          const lineStartX = startX + 20;
+          const lineEndX = startX + (steps.length - 1) * stepSpacing + 20;
+          const lineY = runY + 20;
+          tunnel.moveTo(lineStartX, lineY);
+          tunnel.lineTo(lineEndX, lineY);
+          runContainer.addChild(tunnel);
+        }
+
+        // Draw each step as a dot/shape
+        steps.forEach((step, stepIndex) => {
+          const stepX = startX + stepIndex * stepSpacing;
+          const stepY = runY;
+          const color = STATUS_COLORS[step.status] || STATUS_COLORS.waiting;
+
+          // Step circle
+          const circle = new PIXI.Graphics();
+          circle.beginFill(color);
+          circle.drawCircle(0, 0, 12);
+          circle.endFill();
+          circle.x = stepX + 20;
+          circle.y = stepY + 20;
+
+          // Add subtle glow for running steps
+          if (step.status === 'running') {
+            const glow = new PIXI.Graphics();
+            glow.beginFill(color, 0.3);
+            glow.drawCircle(0, 0, 18);
+            glow.endFill();
+            glow.x = stepX + 20;
+            glow.y = stepY + 20;
+            runContainer.addChild(glow);
+          }
+
+          // Step label (agent name)
+          const stepLabel = new PIXI.Text(step.agent_id, {
+            fontFamily: 'Arial',
+            fontSize: 10,
+            fill: 0x8b7355
+          });
+          stepLabel.x = stepX + 20;
+          stepLabel.y = stepY + 40;
+          stepLabel.anchor.set(0.5, 0);
+
+          runContainer.addChild(circle);
+          runContainer.addChild(stepLabel);
+        });
+
+        // Status indicator
+        const statusColor = STATUS_COLORS[run.status] || STATUS_COLORS.waiting;
+        const statusIndicator = new PIXI.Graphics();
+        statusIndicator.beginFill(statusColor);
+        statusIndicator.drawCircle(0, 0, 6);
+        statusIndicator.endFill();
+        statusIndicator.x = startX + 300;
+        statusIndicator.y = runY - 18;
+        runContainer.addChild(statusIndicator);
+
+        app.stage.addChild(runContainer);
+      });
+    }
+
+    // Render "no data" state
+    function renderNoData() {
+      const text = new PIXI.Text('No active workflows', {
+        fontFamily: 'Arial',
+        fontSize: 18,
+        fill: 0x8b7355
+      });
+      text.anchor.set(0.5);
+      text.x = app.screen.width / 2;
+      text.y = app.screen.height / 2;
+      app.stage.addChild(text);
+    }
+
+    // Start auto-refresh timer
+    function startAutoRefresh() {
+      if (refreshTimer) {
+        clearInterval(refreshTimer);
+      }
+      refreshTimer = setInterval(async () => {
+        // Re-read database if possible (only works if we have a fetch endpoint)
+        await renderVisualization();
+      }, REFRESH_INTERVAL);
+    }
+
+    // Handle window resize
+    window.addEventListener('resize', () => {
+      if (app) {
+        app.renderer.resize(window.innerWidth, window.innerHeight);
+        renderVisualization();
+      }
+    });
+
+    // Start the app
+    document.addEventListener('DOMContentLoaded', init);
+  </script>
+</body>
+</html>
