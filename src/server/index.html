@@ -266,6 +266,16 @@ function getActiveStepId(run) {
   return active ? active.step_id : run.steps[run.steps.length - 1].step_id;
 }
 
+function formatTS(ts) {
+  if (!ts) return '';
+  // Handle SQLite timestamps like "YYYY-MM-DD HH:MM:SS" by converting to ISO-like local time.
+  // JS Date parsing is inconsistent for the space-separated form.
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(ts)) {
+    return new Date(ts.replace(' ', 'T')).toLocaleString();
+  }
+  return new Date(ts).toLocaleString();
+}
+
 function renderBoard(wf, runs) {
   const board = document.getElementById('board');
   const columns = {};
@@ -286,7 +296,7 @@ function renderBoard(wf, runs) {
           const isFailed = run.status === 'failed' || run.status === 'error';
           const cls = isDone ? 'done' : isFailed ? 'failed' : '';
           const badge = `badge-${run.status}`;
-          const time = run.updated_at ? new Date(run.updated_at).toLocaleString() : '';
+          const time = run.updated_at ? formatTS(run.updated_at) : '';
           const title = run.task.length > 60 ? run.task.slice(0, 57) + '…' : run.task;
           return `<div class="card ${cls}" onclick="openRun('${run.id}')">
             <div class="card-title" title="${run.task.replace(/"/g, '&quot;')}">${title}</div>
@@ -309,8 +319,8 @@ function esc(s) { if (!s) return ''; return s.replace(/&/g,'&amp;').replace(/</g
 async function openRun(id) {
   const run = await fetchJSON(`/api/runs/${id}`);
   const panel = document.getElementById('panel');
-  const created = run.created_at ? new Date(run.created_at).toLocaleString() : '';
-  const updated = run.updated_at ? new Date(run.updated_at).toLocaleString() : '';
+  const created = run.created_at ? formatTS(run.created_at) : '';
+  const updated = run.updated_at ? formatTS(run.updated_at) : '';
   const stepsHTML = (run.steps || []).map(s => {
     const st = s.status || 'waiting';
     const icon = stepIcons[st] || '○';
