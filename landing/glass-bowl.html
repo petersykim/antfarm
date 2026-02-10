@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Glass Bowl - Antfarm Workflow Visualization</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.3.2/pixi.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background: #3d3328; }
+        canvas { display: block; }
+        .loading {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            text-align: center; color: #a8a29e; font-family: system-ui;
+        }
+        .status-green { color: #22c55e; }
+        .status-red { color: #ef4444; }
+        .status-yellow { color: #eab308; }
+        .status-gray { color: #6b7280; }
+    </style>
+</head>
+<body>
+    <div id="loading" class="loading">
+        <div class="text-4xl mb-4">🐜</div>
+        <div class="text-lg">Loading database...</div>
+        <div class="text-sm mt-2 opacity-60">Reading ~/.openclaw/antfarm/antfarm.db</div>
+    </div>
+
+    <div id="app" style="display: none;">
+        <div id="canvas-container" class="w-screen h-screen"></div>
+        <div class="absolute top-4 left-4 bg-black/50 rounded-lg p-4 text-white text-sm font-mono">
+            <div class="flex items-center gap-4">
+                <div class="flex items-center gap-2">
+                    <div class="w-3 h-3 rounded-full bg-green-500"></div>
+                    <span>Running</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <div class="w-3 h-3 rounded-full bg-yellow-500"></div>
+                    <span>Pending</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <div class="w-3 h-3 rounded-full bg-red-500"></div>
+                    <span>Failed</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <div class="w-3 h-3 rounded-full bg-gray-500"></div>
+                    <span>Done</span>
+                </div>
+            </div>
+            <div id="stats" class="mt-2 text-xs opacity-80"></div>
+        </div>
+    </div>
+
+    <script>
+        const DB_PATH = '~/.openclaw/antfarm/antfarm.db';
+        
+        async function loadDatabase() {
+            const SQL = await initSqlJs({
+                locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}`
+            });
+
+            try {
+                // Try to load from default path using fetch with file:// protocol fallback
+                const response = await fetch(`/api/db?path=${encodeURIComponent(DB_PATH)}`);
+                let data;
+                
+                if (response.ok) {
+                    data = await response.arrayBuffer();
+                } else {
+                    // Fallback: user picks file
+                    data = await pickFile();
+                }
+
+                const db = new SQL.Database(new Uint8Array(data));
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('app').style.display = 'block';
+                
+                return { db, SQL };
+            } catch (e) {
+                console.error('Failed to load database:', e);
+                document.querySelector('#loading .text-lg').textContent = 'Failed to load database';
+                document.querySelector('#loading .text-sm').textContent = e.message;
+                throw e;
+            }
+        }
+
+        async function pickFile() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.db';
+            return new Promise((resolve, reject) => {
+                input.onchange = async (e) => {
+                    const file = e.target.files[0];
+                    if (!file) reject(new Error('No file selected'));
+                    resolve(await file.arrayBuffer());
+                };
+                input.click();
+            });
+        }
+
+        function getRuns(db) {
+            const stmt = db.prepare(`
+                SELECT r.id, r.workflow_id, r.status, r.created_at,
+                       COUNT(s.id) as step_count,
+                       SUM(CASE WHEN s.status = 'done' THEN 1 ELSE 0 END) as done_count,
+                       SUM(CASE WHEN s.status = 'running' THEN 1 ELSE 0 END) as running_count,
+                       SUM(CASE WHEN s.status = 'failed' THEN 1 ELSE 0 END) as failed_count
+                FROM runs r
+                LEFT JOIN steps s ON r.id = s.run_id
+                WHERE r.status IN ('running', 'pending')
+                GROUP BY r.id
+                ORDER BY r.created_at DESC
+                LIMIT 20
+            `);
+            const runs = [];
+            while (stmt.step()) {
+                runs.push(stmt.getAsObject());
+            }
+            stmt.free();
+            return runs;
+        }
+
+        function getSteps(db, runId) {
+            const stmt = db.prepare(`
+                SELECT step_id, status, step_index, agent_id
+                FROM steps
+                WHERE run_id = ?
+                ORDER BY step_index
+            `);
+            stmt.bind([runId]);
+            const steps = [];
+            while (stmt.step()) {
+                steps.push(stmt.getAsObject());
+            }
+            stmt.free();
+            return steps;
+        }
+
+        function getStatusColor(status) {
+            switch(status.toLowerCase()) {
+                case 'running': return 0x22c55e;
+                case 'pending': return 0xeab308;
+                case 'failed': return 0xef4444;
+                case 'done': return 0x6b7280;
+                default: return 0x9ca3af;
+            }
+        }
+
+        async function initVisualization() {
+            const { db, SQL } = await loadDatabase();
+
+            // Create PIXI application
+            const app = new PIXI.Application({
+                resizeTo: window,
+                backgroundColor: 0x3d3328,
+                antialias: true,
+                resolution: window.devicePixelRatio || 1
+            });
+            
+            document.getElementById('canvas-container').appendChild(app.view);
+
+            // Container for everything
+            const container = new PIXI.Container();
+            app.stage.addChild(container);
+
+            function render() {
+                container.removeChildren();
+                
+                const runs = getRuns(db);
+                const stats = {
+                    runs: runs.length,
+                    totalSteps: runs.reduce((a, r) => a + r.step_count, 0),
+                    running: runs.reduce((a, r) => a + r.running_count, 0),
+                    failed: runs.reduce((a, r) => a + r.failed_count, 0)
+                };
+                
+                document.getElementById('stats').innerHTML = `
+                    ${stats.runs} runs | ${stats.running} running | ${stats.failed} failed
+                `;
+
+                // Draw runs as tunnels
+                const tunnelSpacing = 180;
+                const startY = 100;
+                
+                runs.forEach((run, runIndex) => {
+                    const y = startY + runIndex * tunnelSpacing;
+                    const steps = getSteps(db, run.id);
+                    
+                    // Draw tunnel (dirt background)
+                    const tunnel = new PIXI.Graphics();
+                    tunnel.beginFill(0x2d2418, 0.5);
+                    tunnel.drawRoundedRect(100, y - 40, steps.length * 140 + 40, 80, 40);
+                    tunnel.endFill();
+                    container.addChild(tunnel);
+                    
+                    // Run label
+                    const label = new PIXI.Text(run.workflow_id.slice(0, 8), {
+                        fontFamily: 'monospace',
+                        fontSize: 12,
+                        fill: 0xa8a29e
+                    });
+                    label.x = 20;
+                    label.y = y - 6;
+                    container.addChild(label);
+
+                    // Draw steps as dots
+                    steps.forEach((step, stepIndex) => {
+                        const x = 140 + stepIndex * 140;
+                        const color = getStatusColor(step.status);
+                        
+                        // Draw node
+                        const node = new PIXI.Graphics();
+                        node.beginFill(color);
+                        node.drawCircle(0, 0, 20);
+                        node.endFill();
+                        node.x = x;
+                        node.y = y;
+                        container.addChild(node);
+                        
+                        // Draw connection line to next node
+                        if (stepIndex < steps.length - 1) {
+                            const line = new PIXI.Graphics();
+                            line.lineStyle(2, 0x5c5041, 0.6);
+                            line.moveTo(x + 20, y);
+                            line.lineTo(x + 120, y);
+                            container.addChild(line);
+                        }
+                        
+                        // Step label
+                        const stepLabel = new PIXI.Text(step.step_id.slice(0, 4), {
+                            fontFamily: 'monospace',
+                            fontSize: 10,
+                            fill: 0xffffff
+                        });
+                        stepLabel.anchor.set(0.5);
+                        stepLabel.x = x;
+                        stepLabel.y = y;
+                        container.addChild(stepLabel);
+                    });
+                });
+
+                // Center view
+                const bounds = container.getBounds();
+                if (bounds.width > 0) {
+                    container.x = (app.screen.width - Math.min(bounds.width + 140, app.screen.width - 40)) / 2;
+                }
+            }
+
+            // Initial render
+            render();
+            
+            // Auto-refresh every 5 seconds
+            setInterval(render, 5000);
+
+            // Handle resize
+            window.addEventListener('resize', () => {
+                app.resize();
+                render();
+            });
+        }
+
+        // Start
+        initVisualization().catch(console.error);
+    </script>
+</body>
+</html>
