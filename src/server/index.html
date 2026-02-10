@@ -372,14 +372,22 @@ function renderBoard(wf, runs) {
   const board = document.getElementById('board');
   const columns = {};
   wf.steps.forEach(s => { columns[s.id] = []; });
+  columns.completed = [];
 
   runs.forEach(run => {
+    const st = (run.status || '').toLowerCase();
+    if (isTerminalStatus(st)) {
+      columns.completed.push(run);
+      return;
+    }
     const stepId = getActiveStepId(run);
     const col = stepId && columns[stepId] !== undefined ? stepId : wf.steps[wf.steps.length - 1]?.id;
     if (col && columns[col]) columns[col].push(run);
   });
 
-  board.innerHTML = wf.steps.map(step => {
+  const stepsPlus = [...wf.steps, { id: 'completed' }];
+
+  board.innerHTML = stepsPlus.map(step => {
     const cards = columns[step.id];
     const cardHTML = cards.length === 0
       ? '<div class="empty">No runs</div>'
@@ -402,7 +410,7 @@ function renderBoard(wf, runs) {
           </div>`;
         }).join('');
     return `<div class="column">
-      <div class="column-header">${step.id}<span class="count">${cards.length}</span></div>
+      <div class="column-header">${step.id === 'completed' ? 'completed' : step.id}<span class="count">${cards.length}</span></div>
       <div class="cards">${cardHTML}</div>
     </div>`;
   }).join('');
