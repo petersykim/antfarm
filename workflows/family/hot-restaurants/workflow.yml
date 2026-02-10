@@ -164,20 +164,32 @@ steps:
   - id: deliver
     agent: formatter
     input: |
-      Final delivery of the validated note.
+      Create the Apple Note in Apple Notes (end-to-end delivery).
 
       TASK: {{task}}
       NOTE_TITLE: {{note_title}}
       HTML_BODY: {{html_body}}
 
-      Output the final result with display and creation instructions.
+      Steps:
+      1) Write HTML_BODY to a temp file (exactly as provided).
+      2) Run the apple-notes skill to create the note in Apple Notes.
+
+      Commands (run exactly):
+      ```
+      tmp_html="/tmp/antfarm-hot-restaurants-note.html"
+      cat > "$tmp_html" <<'HTML_EOF'
+      {{html_body}}
+      HTML_EOF
+
+      cd /Users/petersykim/clawd/skills/apple-notes
+      ./scripts/create-note.sh "{{note_title}}" "$tmp_html"
+      ```
 
       Reply with:
       STATUS: done
-      DELIVERED: Apple Note ready for creation
+      CREATED_NOTE: yes
       TITLE: {{note_title}}
-      HTML_PREVIEW: [First 500 chars of HTML]
     expects: "STATUS: done"
-    max_retries: 0
+    max_retries: 1
     on_fail:
       escalate_to: human

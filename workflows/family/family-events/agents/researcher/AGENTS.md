@@ -51,6 +51,12 @@ SOURCES_CHECKED: [list which sources you actually queried]
 - Capture age recommendations if provided
 - Be thorough — check all sources
 
+## Research protocol (mandatory)
+- Use SearXNG via curl only for any searching:
+  curl -s "http://localhost:8080/search?q=<QUERY>&format=json" | head -500
+- Do NOT use the browser for searching.
+- Prefer the curated sources list first.
+
 ## What NOT to Do
 - Don't add sources not in sources.txt
 - Don't skip sources — query all of them

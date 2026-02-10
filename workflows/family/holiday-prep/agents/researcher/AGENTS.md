@@ -34,3 +34,8 @@ KID_ACTIVITIES: |
 - For recipes: keep them realistic for home cooking
 - For kid activities: specify age range if relevant
 - Balance cultural authenticity with accessibility
+
+## Research protocol (mandatory)
+- Use SearXNG via curl only for any searching:
+  curl -s "http://localhost:8080/search?q=<QUERY>&format=json" | head -500
+- Do NOT use the browser for searching.

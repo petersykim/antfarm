@@ -199,19 +199,42 @@ steps:
       on_exhausted:
         escalate_to: human
 
-  - id: summary
-    agent: planner
+  - id: deliver
+    agent: formatter
     input: |
-      Create final summary of all holiday notes prepared.
+      Create Apple Notes for all validated holiday stories (end-to-end delivery).
 
       TASK: {{task}}
       TARGET_MONTH: {{target_month}}
 
+      IMPORTANT:
+      - When you claimed this step, the claim JSON included a runId. Save it as RUN_ID.
+      - This workflow stores each formatted holiday note in the Antfarm DB `stories.output`.
+
+      Steps:
+      1) Read all story outputs for this run from the DB.
+      2) For each story output, extract NOTE_TITLE and HTML_BODY.
+      3) Create the Apple Note using the apple-notes skill.
+
+      Commands (run exactly; fill in RUN_ID):
+      ```
+      RUN_ID="<runId from claim JSON>"
+      DB="$HOME/.openclaw/antfarm/antfarm.db"
+
+      # Dump story outputs to a temp file for parsing
+      sqlite3 "$DB" "SELECT story_id || char(10) || output || char(10) || '---' FROM stories WHERE run_id='$RUN_ID' ORDER BY story_index;" > /tmp/antfarm-holiday-story-outputs.txt
+
+      cd /Users/petersykim/clawd/skills/apple-notes
+      # For each story, write HTML_BODY to a temp file and run create-note.sh
+      ```
+
       Reply with:
       STATUS: done
-      SUMMARY: List of all holiday notes created with titles
-      NEXT_STEPS: Reminder to create notes in Apple Notes using the HTML
+      CREATED_NOTES: yes
+      NOTES: |
+        - YYYY-MM-DD — Holiday Name
+        - ...
     expects: "STATUS: done"
-    max_retries: 0
+    max_retries: 1
     on_fail:
       escalate_to: human
