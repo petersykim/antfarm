@@ -9,6 +9,9 @@ description: |
   Developer implements each story (with tests) in a fresh session. Verifier checks each story.
   Then integration/E2E testing, PR creation, and code review.
 
+context:
+  repo: /Users/petersykim/clawd/tmp/antfarm-sandbox-repo
+
 cron:
   interval_ms: 30000
 
