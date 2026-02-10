@@ -22,7 +22,7 @@ agents:
 
   - id: setup
     name: Setup
-    role: setup
+    role: coding
     description: Scaffolds project with build/test/CI and baseline.
     workspace:
       baseDir: agents/setup

@@ -13,7 +13,7 @@ context:
 agents:
   - id: designer
     name: Designer
-    role: design
+    role: analysis
     description: Creates designs and component specs.
     workspace:
       baseDir: agents/designer
