@@ -356,10 +356,13 @@ function renderBoard(wf, runs) {
           const badge = `badge-${run.status}`;
           const time = run.updated_at ? formatTS(run.updated_at) : '';
           const title = run.task.length > 60 ? run.task.slice(0, 57) + '…' : run.task;
-          return `<div class="card ${cls}" onclick="openRun('${run.id}')">
-            <div class="card-title" title="${run.task.replace(/"/g, '&quot;')}">${title}</div>
+          const shortId = (run.id || '').slice(0, 8);
+          const safeTask = (run.task || '').replace(/"/g, '&quot;');
+          return `<div class="card ${cls}" onclick="openRun('${run.id}')" title="${safeTask}\nRun: ${run.id}">
+            <div class="card-title" title="${safeTask}\nRun: ${run.id}">${title}</div>
             <div class="card-meta">
               <span class="badge ${badge}">${run.status}</span>
+              <span style="font-family:'Geist Mono',monospace;color:var(--text-secondary)">${shortId}</span>
               <span>${time}</span>
             </div>
           </div>`;
