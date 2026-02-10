@@ -79,7 +79,6 @@
     }
 
     #error button {
-      margin-top: 1rem;
       padding: 0.5rem 1rem;
       background: #5a4d3a;
       color: #c9b896;
@@ -92,6 +91,29 @@
     #error button:hover {
       background: #7a6d5a;
     }
+
+    #error .retry-info {
+      margin-top: 0.5rem;
+      font-size: 0.9rem;
+      color: #8b7355;
+    }
+
+    #error .countdown {
+      font-weight: bold;
+      color: #ff9f43;
+    }
+
+    #error #last-load {
+      margin-top: 0.5rem;
+      font-size: 0.85rem;
+      color: #6a5d4a;
+    }
+
+    #error .button-group {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 1rem;
+    }
   </style>
 </head>
 <body>
@@ -100,7 +122,14 @@
     <div id="error">
       <h2>Database Error</h2>
       <p id="error-message"></p>
-      <button onclick="location.reload()">Refresh</button>
+      <p id="retry-info" class="retry-info" style="display: none;">
+        Retrying in <span id="countdown" class="countdown">3</span> seconds...
+      </p>
+      <p id="last-load"></p>
+      <div class="button-group">
+        <button id="retry-btn" onclick="manualRetry()" style="display: none;">Retry Now</button>
+        <button onclick="location.reload()">Refresh Page</button>
+      </div>
     </div>
   </div>
 
@@ -115,7 +144,12 @@
     let db = null;
     let refreshTimer = null;
     let resizeHandler = null;
+    let retryCount = 0;
+    let retryTimeoutId = null;
+    let lastSuccessfulLoad = null;
     const REFRESH_INTERVAL = 5000; // 5 seconds
+    const MAX_RETRIES = 3;
+    const RETRY_DELAYS = [1000, 2000, 4000]; // exponential backoff: 1s, 2s, 4s
 
     // Status colors
     const STATUS_COLORS = {
@@ -132,9 +166,112 @@
     const TUNNEL_COLOR = 0x2a2218;
 
     /**
+     * Retry a fetch with exponential backoff.
+     * @param {string} url - The URL to fetch
+     * @param {object} options - Fetch options
+     * @returns {Promise<Response>} - The fetch response
+     * @throws {Error} - If all retries fail
+     */
+    async function retryFetch(url, options = {}) {
+      let lastError;
+
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          const response = await fetch(url, options);
+          if (response.ok) {
+            return response;
+          }
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        } catch (error) {
+          lastError = error;
+          if (attempt < MAX_RETRIES) {
+            const delay = RETRY_DELAYS[attempt];
+            await new Promise(resolve => setTimeout(resolve, delay));
+          }
+        }
+      }
+
+      throw lastError;
+    }
+
+    /**
+     * Show a retryable error with countdown.
+     * @param {string} message - Error message to display
+     * @param {number} countdown - Seconds until retry
+     */
+    function showRetryableError(message, countdown) {
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('error').style.display = 'block';
+      document.getElementById('error-message').textContent = message;
+      document.getElementById('retry-info').style.display = 'block';
+      document.getElementById('retry-btn').style.display = 'inline-block';
+
+      // Update last load timestamp
+      const lastLoadEl = document.getElementById('last-load');
+      if (lastSuccessfulLoad) {
+        const formatted = new Date(lastSuccessfulLoad).toLocaleString();
+        lastLoadEl.textContent = `Last successful load: ${formatted}`;
+      } else {
+        lastLoadEl.textContent = '';
+      }
+
+      // Start countdown
+      updateCountdown(countdown);
+    }
+
+    /**
+     * Update the countdown display and schedule next retry.
+     * @param {number} seconds - Seconds remaining
+     */
+    function updateCountdown(seconds) {
+      const countdownEl = document.getElementById('countdown');
+      countdownEl.textContent = seconds;
+
+      if (seconds > 0) {
+        retryTimeoutId = setTimeout(() => updateCountdown(seconds - 1), 1000);
+      } else {
+        // Countdown reached 0, trigger retry
+        manualRetry();
+      }
+    }
+
+    /**
+     * Manual retry - reset retry count and reinitialize.
+     */
+    async function manualRetry() {
+      // Clear any pending retry timeout
+      if (retryTimeoutId !== null) {
+        clearTimeout(retryTimeoutId);
+        retryTimeoutId = null;
+      }
+
+      // Reset retry count
+      retryCount = 0;
+
+      // Hide error overlay
+      document.getElementById('error').style.display = 'none';
+      document.getElementById('loading').style.display = 'block';
+      document.getElementById('retry-info').style.display = 'none';
+      document.getElementById('retry-btn').style.display = 'none';
+
+      // Reinitialize
+      try {
+        await init();
+      } catch (error) {
+        showError('Retry failed: ' + error.message);
+      }
+    }
+
+    /**
      * Clean up all resources. Call before page unload or when reinitializing.
      */
     function destroy() {
+      // Clear any pending retry timeout
+      if (retryTimeoutId !== null) {
+        clearTimeout(retryTimeoutId);
+        retryTimeoutId = null;
+      }
+
       // Clear the refresh interval
       if (refreshTimer !== null) {
         clearInterval(refreshTimer);
@@ -184,6 +321,10 @@
         // Initialize SQLite
         await initDatabase();
 
+        // Record successful load time
+        lastSuccessfulLoad = new Date().toISOString();
+        retryCount = 0;
+
         // Hide loading indicator
         document.getElementById('loading').style.display = 'none';
 
@@ -203,7 +344,52 @@
         window.addEventListener('resize', resizeHandler);
 
       } catch (error) {
-        showError('Failed to initialize: ' + error.message);
+        handleInitError(error);
+      }
+    }
+
+    /**
+     * Handle initialization errors with retry logic.
+     * @param {Error} error - The error that occurred
+     */
+    function handleInitError(error) {
+      retryCount++;
+
+      if (retryCount <= MAX_RETRIES) {
+        // Calculate delay (exponential backoff)
+        const delayIndex = Math.min(retryCount - 1, RETRY_DELAYS.length - 1);
+        const delayMs = RETRY_DELAYS[delayIndex];
+        const delaySeconds = Math.ceil(delayMs / 1000);
+
+        showRetryableError(
+          `Failed to initialize (attempt ${retryCount}/${MAX_RETRIES}): ${error.message}`,
+          delaySeconds
+        );
+      } else {
+        // Max retries reached - show permanent error
+        showPermanentError('Failed to initialize after maximum retries: ' + error.message);
+      }
+    }
+
+    /**
+     * Show a permanent error (no more retries).
+     * @param {string} message - Error message to display
+     */
+    function showPermanentError(message) {
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('error').style.display = 'block';
+      document.getElementById('error-message').textContent = message;
+      document.getElementById('retry-info').style.display = 'none';
+      document.getElementById('retry-btn').style.display = 'inline-block';
+      document.getElementById('retry-btn').textContent = 'Try Again';
+
+      // Update last load timestamp if available
+      const lastLoadEl = document.getElementById('last-load');
+      if (lastSuccessfulLoad) {
+        const formatted = new Date(lastSuccessfulLoad).toLocaleString();
+        lastLoadEl.textContent = `Last successful load: ${formatted}`;
+      } else {
+        lastLoadEl.textContent = 'No successful load recorded';
       }
     }
 
@@ -215,9 +401,6 @@
       });
 
       // Try to load the database from local file
-      // Note: In a real browser environment, we'll need a way to access the file.
-      // For now, we create an empty DB and provide instructions for loading real data.
-
       let stmt = null;
       try {
         // Check if we have a file input handler
@@ -228,20 +411,15 @@
           console.log('Running in file:// mode. Using sample data.');
           console.log('To view real data, serve this file from a server with DB access.');
         } else {
-          // Try to fetch the database file
+          // Try to fetch the database file with retry logic
           try {
-            const response = await fetch('/antfarm.db');
-            if (response.ok) {
-              const arrayBuffer = await response.arrayBuffer();
-              const uint8Array = new Uint8Array(arrayBuffer);
-              db = new SQL.Database(uint8Array);
-            } else {
-              // Create sample data if DB not available
-              db = new SQL.Database();
-              createSampleSchema();
-            }
+            const response = await retryFetch('/api/db');
+            const arrayBuffer = await response.arrayBuffer();
+            const uint8Array = new Uint8Array(arrayBuffer);
+            db = new SQL.Database(uint8Array);
           } catch (e) {
-            // Create sample data if fetch fails
+            // Create sample data if fetch fails after retries
+            console.warn('Failed to fetch database after retries, using sample data:', e);
             db = new SQL.Database();
             createSampleSchema();
           }
@@ -310,7 +488,7 @@
       }
     }
 
-    // Show error message
+    // Show error message (original - kept for compatibility)
     function showError(message) {
       document.getElementById('loading').style.display = 'none';
       document.getElementById('error').style.display = 'block';

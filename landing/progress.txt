@@ -5,8 +5,10 @@ Started: 2026-02-08 16:16 ET
 
 ## Codebase Patterns
 - Tests in `landing/__tests__/landing.test.js` check for: id="features", id="quickstart", id="commands", `.hero` and `.feature-grid` in CSS, `@media` in CSS, and that all `href="#x"` have matching `id="x"`
+- Tests in `landing/__tests__/glass-bowl.test.js` check for memory cleanup patterns (destroy function, null assignments, try/finally for SQL stmt.free())
 - Tests use `node:test` + `node:assert/strict`, run with `node --test`
 - Landing page is pure HTML+CSS, no JS, no build step
+- Glass Bowl uses inline JavaScript with PIXI.js and sql.js for 3D workflow visualization
 
 ---
 
@@ -19,4 +21,21 @@ Started: 2026-02-08 16:16 ET
 - Responsive with @media breakpoint at 640px
 - Files changed: landing/index.html, landing/style.css
 - **Learnings:** Tests check CSS for class names (.hero, .feature-grid) even if not used in HTML, so keep them in the stylesheet
+---
+
+## 2026-02-10 04:12 - US-002: Add robust error handling with retry mechanism
+- Added retryFetch() function with exponential backoff (1s, 2s, 4s delays)
+- Added MAX_RETRIES = 3 constant for limiting retry attempts
+- Added showRetryableError() with countdown timer and retry info
+- Added handleInitError() to manage retry flow vs permanent errors
+- Added showPermanentError() for when max retries exceeded
+- Added updateCountdown() for visual countdown display (1s, 2s, 3s...)
+- Added manualRetry() function for Retry Now button
+- Added lastSuccessfulLoad timestamp tracking
+- Integrated retryFetch into initDatabase() for /api/db calls
+- Updated destroy() to clear retryTimeoutId to prevent memory leaks
+- Added comprehensive tests for retry mechanism (28 new assertions)
+- All 56 tests pass (28 memory cleanup + 28 retry mechanism)
+- Files changed: landing/glass-bowl.html, landing/__tests__/glass-bowl.test.js
+- **Learnings:** Glass Bowl tests use node:test with readFileSync to parse HTML content, tests verify both memory cleanup patterns and retry mechanism integration
 ---

@@ -1,6 +1,6 @@
 /**
  * Glass Bowl Memory Cleanup Tests
- * 
+ *
  * These tests verify that the glass-bowl.html visualization properly
  * cleans up resources to prevent memory leaks.
  */
@@ -20,7 +20,7 @@ const htmlContent = readFileSync(htmlPath, 'utf-8');
 describe('Glass Bowl Memory Cleanup', () => {
   describe('Resource Management', () => {
     it('should have a destroy() function defined', () => {
-      assert.ok(htmlContent.includes('function destroy()'), 
+      assert.ok(htmlContent.includes('function destroy()'),
         'destroy() function must be defined');
     });
 
@@ -35,7 +35,7 @@ describe('Glass Bowl Memory Cleanup', () => {
     });
 
     it('should add beforeunload listener to clear interval', () => {
-      assert.ok(htmlContent.includes('beforeunload') && 
+      assert.ok(htmlContent.includes('beforeunload') &&
                 htmlContent.includes('destroy()'),
         'beforeunload listener must call destroy()');
     });
@@ -126,7 +126,7 @@ describe('Glass Bowl Memory Cleanup', () => {
       // Check that init() is an async function and calls destroy() early
       assert.ok(htmlContent.includes('async function init()'),
         'init function must be async');
-      
+
       // The destroy() call should appear early in init after try {
       const initSection = htmlContent.substring(
         htmlContent.indexOf('async function init()'),
@@ -152,7 +152,7 @@ describe('Glass Bowl Memory Cleanup', () => {
     it('should check app exists in renderNoData', () => {
       assert.ok(htmlContent.includes('function renderNoData()'),
         'renderNoData function must exist');
-      
+
       const noDataSection = htmlContent.substring(
         htmlContent.indexOf('function renderNoData()'),
         htmlContent.indexOf('function renderNoData()') + 200
@@ -176,7 +176,7 @@ describe('Glass Bowl Memory Cleanup', () => {
 
     it('should resume refresh when tab becomes visible', () => {
       assert.ok(htmlContent.includes('!document.hidden') ||
-                (htmlContent.includes('document.hidden') && 
+                (htmlContent.includes('document.hidden') &&
                  htmlContent.match(/else[\s\S]{0,200}startAutoRefresh/)),
         'Should resume refresh when tab becomes visible');
     });
@@ -198,6 +198,185 @@ describe('Glass Bowl Memory Cleanup', () => {
       const destroyMatch = htmlContent.match(/function destroy\(\)[\s\S]*?refreshTimer = null[\s\S]*?\n\}/);
       assert.ok(destroyMatch || htmlContent.includes('refreshTimer = null'),
         'refreshTimer should be set to null after clearing in destroy()');
+    });
+  });
+});
+
+describe('Glass Bowl Retry Mechanism', () => {
+  describe('Retry Configuration', () => {
+    it('should have MAX_RETRIES constant set to 3', () => {
+      assert.ok(htmlContent.includes('const MAX_RETRIES = 3') ||
+                htmlContent.match(/MAX_RETRIES\s*=\s*3/),
+        'MAX_RETRIES must be set to 3');
+    });
+
+    it('should have RETRY_DELAYS with exponential backoff', () => {
+      assert.ok(htmlContent.includes('RETRY_DELAYS'),
+        'RETRY_DELAYS array must be defined');
+      assert.ok(htmlContent.includes('1000') && htmlContent.includes('2000') && htmlContent.includes('4000'),
+        'RETRY_DELAYS should contain exponential backoff delays: 1000, 2000, 4000');
+    });
+
+    it('should initialize retryCount to 0', () => {
+      assert.ok(htmlContent.includes('let retryCount = 0'),
+        'retryCount must be initialized to 0');
+    });
+
+    it('should have retryTimeoutId for countdown cleanup', () => {
+      assert.ok(htmlContent.includes('let retryTimeoutId = null'),
+        'retryTimeoutId must be defined for countdown cleanup');
+    });
+
+    it('should track lastSuccessfulLoad timestamp', () => {
+      assert.ok(htmlContent.includes('let lastSuccessfulLoad = null'),
+        'lastSuccessfulLoad must be defined');
+    });
+  });
+
+  describe('retryFetch Function', () => {
+    it('should have retryFetch function defined', () => {
+      assert.ok(htmlContent.includes('async function retryFetch(url'),
+        'retryFetch function must be defined');
+    });
+
+    it('retryFetch should accept url and options parameters', () => {
+      const hasParams = htmlContent.match(/function retryFetch\(url[^)]*options/) ||
+                       htmlContent.match(/async function retryFetch\(url[^)]*,?\s*options/) ||
+                       htmlContent.includes('retryFetch(url, options = {})');
+      assert.ok(hasParams,
+        'retryFetch must accept url and options parameters');
+    });
+
+    it('should have for loop in retryFetch for attempt count', () => {
+      assert.ok(htmlContent.match(/for\s*\(\s*let\s+attempt\s*=\s*0/) ||
+                htmlContent.includes('attempt = 0'),
+        'retryFetch must loop through attempts');
+    });
+
+    it('should use setTimeout for exponential backoff delays', () => {
+      assert.ok(htmlContent.includes('setTimeout') &&
+                htmlContent.includes('RETRY_DELAYS'),
+        'retryFetch must use setTimeout with RETRY_DELAYS for backoff');
+    });
+  });
+
+  describe('Error Display', () => {
+    it('should have showRetryableError function', () => {
+      assert.ok(htmlContent.includes('function showRetryableError(message'),
+        'showRetryableError function must be defined');
+    });
+
+    it('should have showPermanentError for max retries reached', () => {
+      assert.ok(htmlContent.includes('function showPermanentError(message'),
+        'showPermanentError function must be defined');
+    });
+
+    it('should have handleInitError function', () => {
+      assert.ok(htmlContent.includes('function handleInitError(error'),
+        'handleInitError function must be defined');
+    });
+
+    it('should display retry countdown element', () => {
+      assert.ok(htmlContent.includes('id="retry-info"'),
+        'retry-info element must exist for countdown display');
+      assert.ok(htmlContent.includes('id="countdown"'),
+        'countdown span element must exist');
+    });
+
+    it('should display last successful load timestamp', () => {
+      assert.ok(htmlContent.includes('id="last-load"'),
+        'last-load element must exist for timestamp display');
+    });
+
+    it('should update lastSuccessfulLoad on successful init', () => {
+      assert.ok(htmlContent.includes('lastSuccessfulLoad = new Date().toISOString()'),
+        'lastSuccessfulLoad must be set on successful initialization');
+    });
+  });
+
+  describe('Retry Countdown', () => {
+    it('should have updateCountdown function', () => {
+      assert.ok(htmlContent.includes('function updateCountdown(seconds'),
+        'updateCountdown function must be defined');
+    });
+
+    it('should use setTimeout for countdown updates', () => {
+      assert.ok(htmlContent.match(/updateCountdown\(\s*seconds\s*-\s*1/) ||
+                htmlContent.includes('seconds - 1'),
+        'updateCountdown must recursively count down using setTimeout');
+    });
+  });
+
+  describe('Manual Retry', () => {
+    it('should have manualRetry function', () => {
+      assert.ok(htmlContent.includes('async function manualRetry()'),
+        'manualRetry function must be defined');
+    });
+
+    it('should have Retry Now button', () => {
+      assert.ok(htmlContent.includes('id="retry-btn"'),
+        'Retry Now button must exist');
+      assert.ok(htmlContent.includes('onclick="manualRetry()"'),
+        'Retry button must call manualRetry onclick');
+    });
+
+    it('manualRetry should reset retryCount to 0', () => {
+      const fnRegex = /function manualRetry\(\)[\s\S]{0,200}retryCount = 0/;
+      assert.ok(fnRegex.test(htmlContent),
+        'manualRetry must reset retryCount to 0');
+    });
+
+    it('manualRetry should clear retryTimeoutId', () => {
+      const fnRegex = /function manualRetry\(\)[\s\S]{0,300}retryTimeoutId = null/;
+      assert.ok(fnRegex.test(htmlContent),
+        'manualRetry must clear retryTimeoutId');
+    });
+  });
+
+  describe('Error Handling Integration', () => {
+    it('init should use handleInitError instead of showError', () => {
+      assert.ok(htmlContent.includes('catch (error) { handleInitError(error); }') ||
+                htmlContent.includes('handleInitError(error)'),
+        'init() catch block must use handleInitError');
+    });
+
+    it('initDatabase should use retryFetch for /api/db', () => {
+      assert.ok(htmlContent.includes('await retryFetch(\'/api/db\')') ||
+                htmlContent.match(/retryFetch\(['"]\/api\/db['"]\)/),
+        'initDatabase must use retryFetch for database fetching');
+    });
+
+    it('handleInitError should increment retryCount', () => {
+      assert.ok(htmlContent.match(/handleInitError\(error\)[\s\S]{0,200}retryCount\+\+/) ||
+                htmlContent.includes('retryCount++'),
+        'handleInitError must increment retryCount');
+    });
+
+    it('handleInitError should check max retries', () => {
+      assert.ok(htmlContent.match(/retryCount\s*<=\s*MAX_RETRIES/) ||
+                htmlContent.includes('retryCount <= MAX_RETRIES'),
+        'handleInitError must check retryCount against MAX_RETRIES');
+    });
+
+    it('handleInitError should calculate exponential backoff', () => {
+      assert.ok(htmlContent.includes('RETRY_DELAYS') &&
+                htmlContent.match(/delayIndex\s*=.*retryCount/),
+        'handleInitError must calculate exponential backoff based on retryCount');
+    });
+  });
+
+  describe('Cleanup', () => {
+    it('destroy should clear retryTimeoutId', () => {
+      assert.ok(htmlContent.match(/function destroy\(\)[\s\S]*?retryTimeoutId = null/) ||
+                (htmlContent.includes('retryTimeoutId') &&
+                 htmlContent.match(/function destroy\(\)[\s\S]*?retryTimeoutId/)),
+        'destroy() must clear retryTimeoutId');
+    });
+
+    it('destroy should clear retry timeout with clearTimeout', () => {
+      assert.ok(htmlContent.match(/function destroy\(\)[\s\S]*?clearTimeout\(retryTimeoutId\)/) ||
+                htmlContent.includes('clearTimeout(retryTimeoutId)'),
+        'destroy() must call clearTimeout on retryTimeoutId');
     });
   });
 });
