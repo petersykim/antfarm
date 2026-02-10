@@ -410,7 +410,7 @@ function renderBoard(wf, runs) {
           </div>`;
         }).join('');
     return `<div class="column">
-      <div class="column-header">${step.id === 'completed' ? 'completed' : step.id}<span class="count">${cards.length}</span></div>
+      <div class="column-header">${step.id === 'completed' ? 'COMPLETED' : step.id}<span class="count">${cards.length}</span></div>
       <div class="cards">${cardHTML}</div>
     </div>`;
   }).join('');
