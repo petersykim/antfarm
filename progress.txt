@@ -1,0 +1,23 @@
+# Progress Log
+Run: fix-glass-bowl-mvp
+Task: Fix Glass Bowl MVP: Add error handling, smooth updates, interactivity
+Started: 2026-02-10
+
+## Codebase Patterns
+- glass-bowl.html is a single-file HTML+JS visualization using PixiJS and SQL.js
+- Uses node:sqlite DatabaseSync pattern on backend, sql.js in browser
+- Memory management critical: must free SQL statements, destroy PIXI, clear intervals
+- Tests verify memory cleanup via global state inspection
+
+---
+
+## 2026-02-10 - US-001: Fix memory leaks and add proper resource cleanup
+- Added destroy() function that cleans up all resources
+- Wrapped all SQL statement usage in try/finally blocks with .free()
+- Store refreshTimer ID, clear it on page unload via beforeunload listener
+- Store resizeHandler reference, remove listener on cleanup
+- Call app.destroy(true, { children: true, texture: true, baseTexture: true }) properly
+- Added visibilitychange handler to pause/resume when tab hidden/visible
+- Files changed: landing/glass-bowl.html, landing/__tests__/glass-bowl.test.js, progress.txt
+- **Learnings:** PIXI.Application destroy() with children:true cleans up all sprites/graphics. SQL.js statements MUST be freed or they leak memory. Always store timer IDs and listener references for cleanup.
+---
