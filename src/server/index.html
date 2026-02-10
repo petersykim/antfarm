@@ -306,7 +306,10 @@ function filterRunsForView(runs) {
 async function loadRuns() {
   if (!currentWf) return;
   const runs = await fetchJSON(`/api/runs?workflow=${currentWf.id}`);
-  renderBoard(currentWf, filterRunsForView(runs));
+  const filtered = filterRunsForView(runs);
+  const note = document.getElementById('refresh-note');
+  if (note) note.textContent = `Auto-refresh: 30s · runs: ${runs?.length ?? 0} (showing ${filtered?.length ?? 0})`;
+  renderBoard(currentWf, filtered);
 }
 
 function getActiveStepId(run) {
