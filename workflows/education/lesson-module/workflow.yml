@@ -1,0 +1,348 @@
+# Educational Lesson Module Development Workflow
+# Requirements → architecture → scaffold → implementation → testing → release
+id: lesson-module
+name: Educational Lesson Module Development
+version: 1
+description: |
+  Story-driven pipeline for educational software features.
+  Treats lessons, assessments, and standards as data and behaviors.
+  Focus: APIs, schema, runtime, rendering, accessibility, analytics, LMS integration.
+
+context:
+  repo: /Users/petersykim/clawd/tmp/antfarm-sandbox-repo
+
+agents:
+  - id: planner
+    name: Technical Planner
+    role: analysis
+    description: Converts feature set into sequenced, testable story map (max 20 stories).
+
+  - id: architect
+    name: Architect
+    role: architecture
+    description: Defines stack, module boundaries, interfaces, schemas, and NFRs.
+
+  - id: setup
+    name: Scaffolder
+    role: setup
+    description: Initializes repo, CI/CD, typecheck, lint, test runners, baseline tests.
+
+  - id: developer
+    name: Developer
+    role: coding
+    description: Implements backend/services, player UI, adapters with tests and types.
+
+  - id: verifier
+    name: Verifier
+    role: verification
+    description: Confirms acceptance criteria, test existence, passing builds, and typechecks.
+
+  - id: tester
+    name: Integration Tester
+    role: testing
+    description: Validates cross-service flows and E2E scenarios.
+
+  - id: security
+    name: Security & Compliance
+    role: security
+    description: Scans deps, reviews auth/authz, validates PII handling, checks LTI signatures.
+
+  - id: release
+    name: Release Manager
+    role: release
+    description: Handles versioning, migrations, deployment, and feature flags.
+
+  - id: reviewer
+    name: Reviewer
+    role: analysis
+    description: Reviews quality, patterns, performance, and maintainability.
+
+steps:
+  - id: plan
+    agent: planner
+    input: |
+      Decompose lesson module feature into ≤20 stories.
+
+      TASK: {{task}}
+
+      Order by dependency:
+      - Foundations: schema, content CRUD, assessment primitives, player shell
+      - Then: rendering, interactions, scoring, analytics, integration adapters
+      - Then: i18n, accessibility automation, performance, caching
+
+      Each story must:
+      - Fit in one session
+      - Have mechanically verifiable acceptance criteria
+      - Include "Tests for [feature] pass"
+      - Include "Typecheck passes"
+
+      Reply with:
+      STATUS: done
+      REPO: path to repo
+      BRANCH: feature branch
+      MODULE_SPEC: technical scope and constraints
+      STORIES_JSON: [array of story objects]
+    expects: "STATUS: done"
+    max_retries: 2
+
+  - id: architecture
+    agent: architect
+    input: |
+      Design system architecture for lesson module.
+
+      TASK: {{task}}
+      REPO: {{repo}}
+      BRANCH: {{branch}}
+
+      Define:
+      - Stack and module boundaries:
+        * Content Service (CRUD, versioning, import/export)
+        * Assessment Engine (question types, scoring, attempts)
+        * Player Runtime (render, state, offline)
+        * State & Persistence (progress, attempts, idempotent saves)
+        * Standards Mapping Service
+        * Analytics/Events (schema, batching, PII handling)
+        * LMS Integration (LTI launch, grade passback)
+        * Localization/i18n
+        * Accessibility (WCAG checks, automation)
+      - API schema (OpenAPI/GraphQL)
+      - Data models & migrations
+      - Error taxonomy, logging, observability
+      - Performance targets (TTI, caching strategy)
+      - Testing strategy (unit/integration/E2E/a11y)
+
+      Reply with:
+      STATUS: done
+      ARCHITECTURE: summary of key decisions
+    expects: "STATUS: done"
+    max_retries: 2
+
+  - id: setup
+    agent: setup
+    input: |
+      Initialize development environment.
+
+      TASK: {{task}}
+      REPO: {{repo}}
+      BRANCH: {{branch}}
+
+      Setup:
+      - Repo/monorepo structure
+      - Build system, typecheck, lint/format
+      - Test runners (unit/integration/E2E)
+      - CI jobs: typecheck → lint → unit → integration → E2E → a11y scan
+      - Baseline tests (hello-world service, trivial component)
+      - progress.txt with:
+        * Decisions & Rationale
+        * Codebase Patterns
+        * Contracts & Schemas
+        * Known Gaps & Risks
+
+      Reply with:
+      STATUS: done
+      BUILD_CMD: build command
+      TEST_CMD: test command
+      CI_NOTES: pipeline summary
+      BASELINE: pass/fail summary
+    expects: "STATUS: done"
+    max_retries: 2
+
+  - id: implement
+    agent: developer
+    type: loop
+    loop:
+      context_key: stories
+      iterate_over: "{{stories}}"
+    input: |
+      Implement one story (software-only).
+
+      TASK: {{task}}
+      REPO: {{repo}}
+      BRANCH: {{branch}}
+      BUILD_CMD: {{build_cmd}}
+      TEST_CMD: {{test_cmd}}
+
+      CURRENT STORY: {{current_story}}
+      COMPLETED STORIES: {{completed_stories}}
+      STORIES REMAINING: {{remaining_story_count}}
+
+      Example stories:
+      - Define lesson content schema & migrations
+      - Content Service CRUD with versioned publish
+      - Assessment Engine: MCQ + short-answer items, scoring API
+      - Player Runtime: load lesson → render blocks → track progress
+      - State persistence: resume, idempotent saves
+      - Analytics events: view, interact, submit, score
+      - LMS adapter: LTI launch & grade passback
+      - i18n infrastructure and key extraction
+      - Automated a11y scan integration in CI
+
+      Instructions:
+      1. Read progress.txt (Codebase Patterns)
+      2. Pull latest
+      3. Implement this story only
+      4. Write tests (unit/integration/E2E if relevant)
+      5. Run typecheck/build/tests
+      6. Commit: feat: <story_id> - <story_title>
+      7. Update progress.txt
+
+      Reply with:
+      STATUS: done
+      CHANGES: what was implemented
+      TESTS: what was tested
+    expects: "STATUS: done"
+    max_retries: 2
+
+  - id: verify
+    agent: verifier
+    type: loop
+    loop:
+      context_key: stories
+      iterate_over: "{{stories}}"
+    input: |
+      Verify this story.
+
+      STORY: {{current_story}}
+      DEVELOPER_OUTPUT: {{implement_output}}
+
+      Check:
+      - Non-placeholder code exists and compiles
+      - Acceptance criteria met (API contracts, event shapes, etc.)
+      - Tests present and relevant
+      - Tests pass
+      - No blocking TODOs
+      - Typecheck passes
+
+      Reply with:
+      STATUS: done
+      VERIFIED: details
+      
+      OR if incomplete:
+      STATUS: retry
+      ISSUES: specific gaps
+    expects: "STATUS: done"
+    max_retries: 2
+
+  - id: security
+    agent: security
+    input: |
+      Perform security review (technical).
+
+      REPO: {{repo}}
+      BRANCH: {{branch}}
+
+      Check:
+      - Dependency (SCA) and static analysis (SAST)
+      - Secrets management, config boundaries
+      - PII data map for learner identifiers
+      - LTI auth/signature validation tests
+      - Event/log scrubbing rules
+      - Least-privilege for DB/API
+
+      Reply with:
+      STATUS: done
+      SECURITY_FINDINGS: prioritized actions
+    expects: "STATUS: done"
+    max_retries: 2
+
+  - id: integration-test
+    agent: tester
+    input: |
+      Run full integration and E2E test suite.
+
+      REPO: {{repo}}
+      BRANCH: {{branch}}
+      TEST_CMD: {{test_cmd}}
+
+      Exercise core flows:
+      - Launch via LMS (mock), obtain context
+      - Load lesson, render, interact with items
+      - Persist progress and submit attempts
+      - Score via Assessment Engine
+      - Post grade via LMS adapter
+      - Emit analytics and verify event pipeline
+
+      Validate error handling (network retry, partial saves) and performance.
+
+      Reply with:
+      STATUS: done
+      RESULTS: what and how it was validated
+      
+      OR if failing:
+      STATUS: retry
+      FAILURES: cases, logs, traces
+    expects: "STATUS: done"
+    max_retries: 2
+
+  - id: pr
+    agent: developer
+    input: |
+      Create pull request.
+
+      REPO: {{repo}}
+      BRANCH: {{branch}}
+
+      Include:
+      - Clear title and rationale
+      - API/spec links (OpenAPI/GraphQL, event schema)
+      - Screenshots/GIFs of player flows (if UI visible)
+      - Test coverage summary and CI links
+
+      Use: gh pr create
+
+      Reply with:
+      STATUS: done
+      PR: URL
+    expects: "STATUS: done"
+    max_retries: 2
+
+  - id: review
+    agent: reviewer
+    input: |
+      Review the pull request.
+
+      PR: {{pr}}
+
+      Review for:
+      - Code quality, patterns, service boundary cohesion
+      - Correctness of contracts (APIs, events, LTI)
+      - Test depth: unit/integration/E2E/a11y
+      - Performance considerations and error handling
+      - Maintainability and documentation
+
+      Reply with:
+      STATUS: done
+      DECISION: approved
+      
+      OR if changes needed:
+      STATUS: retry
+      DECISION: changes_requested
+      FEEDBACK: actionable items
+    expects: "STATUS: done"
+    max_retries: 3
+
+  - id: release
+    agent: release
+    input: |
+      Release and deploy.
+
+      REPO: {{repo}}
+      BRANCH: {{branch}}
+
+      Tasks:
+      - Bump version, tag release, generate release notes
+      - Ensure migrations run safely
+      - Deploy with feature flags for risky components
+      - Post-deploy smoke (load lesson, submit, grade, analytics)
+      - Set monitoring SLO alerts
+
+      Reply with:
+      STATUS: done
+      RELEASE: version
+      DEPLOYMENT: env + result
+      POST_DEPLOY_NOTES: observations & follow-ups
+    expects: "STATUS: done"
+    max_retries: 2
+
+cron:
+  interval_ms: 300000

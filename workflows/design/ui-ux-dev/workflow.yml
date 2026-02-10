@@ -1,0 +1,311 @@
+# UI/UX Design & Implementation Workflow
+# Research → design → prototype → implement → verify → test
+id: ui-ux-dev
+name: UI/UX Design & Implementation
+version: 1
+description: |
+  Story-driven UI/UX workflow: research → wireframes → hi-fi design → prototyping → frontend implementation → verification.
+  Each agent works in fresh session; history persisted via progress.txt, design artifacts, and repo commits.
+
+context:
+  repo: /Users/petersykim/clawd/tmp/antfarm-sandbox-repo
+
+agents:
+  - id: ux-researcher
+    name: UX Researcher
+    role: analysis
+    description: Defines problem, target users, journeys, and UX requirements.
+
+  - id: info-architect
+    name: Information Architect
+    role: architecture
+    description: Defines sitemap, navigation model, content hierarchy, and flows.
+
+  - id: ux-designer
+    name: UX Designer
+    role: design
+    description: Creates wireframes and layout patterns per story.
+
+  - id: ui-designer
+    name: UI/Visual Designer
+    role: design
+    description: Produces hi-fi designs, design system, and accessibility guidelines.
+
+  - id: prototyper
+    name: Prototyper
+    role: design
+    description: Builds interactive prototypes with transitions and micro-interactions.
+
+  - id: developer
+    name: Frontend Developer
+    role: coding
+    description: Implements UI stories using design system; ensures accessibility and responsiveness.
+
+  - id: verifier
+    name: UI Verifier
+    role: verification
+    description: Validates coded UI matches design specs and meets acceptance criteria.
+
+  - id: tester
+    name: UI Tester
+    role: testing
+    description: Validates flows via E2E tests including accessibility and responsiveness.
+
+  - id: reviewer
+    name: Reviewer
+    role: analysis
+    description: Reviews PRs for design fidelity, component correctness, and quality.
+
+steps:
+  - id: ux-research
+    agent: ux-researcher
+    input: |
+      Conduct UX research for this project.
+
+      TASK: {{task}}
+
+      Create:
+      - User personas
+      - User needs & goals
+      - Journey maps
+      - UX requirements (including WCAG accessibility constraints)
+
+      Reply with:
+      STATUS: done
+      UX_REQUIREMENTS: summary
+    expects: "STATUS: done"
+    max_retries: 2
+
+  - id: information-architecture
+    agent: info-architect
+    input: |
+      Define information architecture.
+
+      TASK: {{task}}
+      UX_REQUIREMENTS: {{ux_requirements}}
+
+      Create:
+      - Sitemap
+      - Navigation structure
+      - Content hierarchy
+      - Canonical user flows
+
+      Reply with:
+      STATUS: done
+      IA_SUMMARY: key decisions
+    expects: "STATUS: done"
+    max_retries: 2
+
+  - id: wireframe
+    agent: ux-designer
+    type: loop
+    loop:
+      context_key: stories
+      iterate_over: "{{stories}}"
+    input: |
+      Create low-fidelity wireframes for this story.
+
+      STORY: {{current_story}}
+      IA_SUMMARY: {{ia_summary}}
+      UX_REQUIREMENTS: {{ux_requirements}}
+
+      Produce:
+      - Lo-fi wireframes
+      - Layout rules and spacing
+      - Interaction notes
+      - Mechanically verifiable acceptance criteria
+
+      Save wireframes in /design/wireframes/story-ID/
+
+      Reply with:
+      STATUS: done
+      WIREFRAMES: description of what was created
+    expects: "STATUS: done"
+    max_retries: 2
+
+  - id: ui-design
+    agent: ui-designer
+    input: |
+      Create high-fidelity designs.
+
+      TASK: {{task}}
+      WIREFRAMES: {{wireframe_output}}
+
+      Develop:
+      - Hi-fi design exports
+      - Color tokens
+      - Typography scale
+      - Iconography
+      - Component library guidelines
+      - Accessibility rules (contrast, focus, ARIA patterns)
+      - Design-to-code annotations
+
+      Reply with:
+      STATUS: done
+      DESIGN_SYSTEM: summary of design system updates
+    expects: "STATUS: done"
+    max_retries: 2
+
+  - id: prototype
+    agent: prototyper
+    input: |
+      Build interactive prototype.
+
+      TASK: {{task}}
+      DESIGN_SYSTEM: {{design_system}}
+
+      Specify:
+      - Transitions and motion
+      - Micro-interactions
+      - States (hover, active, disabled, error, loading)
+      - Testable interaction specs
+
+      Reply with:
+      STATUS: done
+      PROTOTYPE: link and interaction spec summary
+    expects: "STATUS: done"
+    max_retries: 2
+
+  - id: implement
+    agent: developer
+    type: loop
+    loop:
+      context_key: stories
+      iterate_over: "{{stories}}"
+    input: |
+      Implement UI for this story.
+
+      STORY: {{current_story}}
+      REPO: {{repo}}
+      BRANCH: {{branch}}
+      DESIGN_SYSTEM: {{design_system}}
+      PROTOTYPE: {{prototype}}
+
+      Implement:
+      - UI using design system tokens and components
+      - Responsive behavior
+      - Accessibility (keyboard nav, ARIA roles, color/contrast)
+      - State handling per prototype
+
+      Write tests:
+      - Unit tests for components
+      - Integration tests for flows
+
+      Commit: feat(ui): story-ID – story-title
+      Update progress.txt with patterns and components added.
+
+      Reply with:
+      STATUS: done
+      CHANGES: what was implemented
+      TESTS: what tests were written
+    expects: "STATUS: done"
+    max_retries: 2
+
+  - id: verify
+    agent: verifier
+    type: loop
+    loop:
+      context_key: stories
+      iterate_over: "{{stories}}"
+    input: |
+      Verify UI implementation for this story.
+
+      STORY: {{current_story}}
+      DESIGN_SYSTEM: {{design_system}}
+      PROTOTYPE: {{prototype}}
+      DEVELOPER_OUTPUT: {{implement_output}}
+
+      Verify:
+      - Visual fidelity (matches design)
+      - Interaction fidelity (matches prototype)
+      - Accessibility rules pass
+      - Responsive variants implemented
+      - Tests exist & pass
+      - Typecheck passes
+
+      Reply with:
+      STATUS: done
+      VERIFIED: details
+      
+      OR if incomplete:
+      STATUS: retry
+      ISSUES: list of problems
+    expects: "STATUS: done"
+    max_retries: 2
+
+  - id: ui-test
+    agent: tester
+    input: |
+      Run E2E and integration UI tests.
+
+      REPO: {{repo}}
+      BRANCH: {{branch}}
+
+      Test:
+      - Navigation and multi-screen flows
+      - Error states
+      - Touch/mobile interactions
+      - Keyboard navigation
+      - Screen-reader compatibility
+      - Cross-cutting concerns (modals, notifications, loading)
+
+      Reply with:
+      STATUS: done
+      RESULTS: test summary
+      
+      OR if failing:
+      STATUS: retry
+      FAILURES: details
+    expects: "STATUS: done"
+    max_retries: 2
+
+  - id: pr
+    agent: developer
+    input: |
+      Create pull request.
+
+      REPO: {{repo}}
+      BRANCH: {{branch}}
+
+      Include:
+      - Clear summary
+      - Screenshots + GIFs of UI
+      - Links to design specs
+      - Testing summary
+
+      Use: gh pr create
+
+      Reply with:
+      STATUS: done
+      PR: URL
+    expects: "STATUS: done"
+    max_retries: 2
+
+  - id: review
+    agent: reviewer
+    input: |
+      Review the pull request.
+
+      PR: {{pr}}
+
+      Review:
+      - Fidelity to design system
+      - Code quality + component reusability
+      - Accessibility correctness
+      - Responsive handling
+      - Test coverage
+      - Patterns consistency with progress.txt
+
+      Reply with:
+      STATUS: done
+      DECISION: approved
+      
+      OR if changes needed:
+      STATUS: retry
+      DECISION: changes_requested
+      FEEDBACK: actionable items
+    expects: "STATUS: done"
+    max_retries: 3
+
+cron:
+  interval_ms: 300000

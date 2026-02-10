@@ -1,0 +1,323 @@
+# New Software Development Workflow
+# Full-stack application development from idea → architecture → implementation → release
+id: new-app-dev
+name: New Software Development
+version: 1
+description: |
+  Guides a new software product from concept to production.
+  Story-driven execution: planning → architecture → environment → implementation → testing → release.
+
+context:
+  repo: /Users/petersykim/clawd/tmp/antfarm-sandbox-repo
+
+agents:
+  - id: planner
+    name: Technical Planner
+    role: analysis
+    description: Decomposes requirements into dependency-ordered engineering stories.
+
+  - id: architect
+    name: Software Architect
+    role: architecture
+    description: Designs system architecture, API contracts, data models, and testing strategy.
+
+  - id: setup
+    name: Environment Setup
+    role: setup
+    description: Creates repo scaffolding, CI/CD pipeline, and baseline build/test.
+
+  - id: developer
+    name: Developer
+    role: coding
+    description: Implements stories with tests, types, and documentation.
+
+  - id: verifier
+    name: Verifier
+    role: verification
+    description: Validates acceptance criteria and test coverage per story.
+
+  - id: tester
+    name: Integration Tester
+    role: testing
+    description: Runs E2E and integration tests across the system.
+
+  - id: security
+    name: Security Reviewer
+    role: security
+    description: Scans dependencies, validates auth logic, checks for secrets exposure.
+
+  - id: release
+    name: Release Manager
+    role: release
+    description: Handles versioning, migrations, deployment, and system health validation.
+
+  - id: reviewer
+    name: Reviewer
+    role: analysis
+    description: Reviews code quality, patterns, and maintainability.
+
+steps:
+  - id: plan
+    agent: planner
+    input: |
+      Decompose this task into ≤20 implementable engineering stories.
+
+      TASK: {{task}}
+
+      Order by dependency: schema/DB → backend → frontend → integration.
+      Each story must:
+      - Fit in one session
+      - Have mechanically verifiable acceptance criteria
+      - Include "Tests for [feature] pass"
+      - Include "Typecheck passes"
+
+      Reply with:
+      STATUS: done
+      REPO: path to repo
+      BRANCH: feature branch name
+      STORIES_JSON: [array of story objects]
+    expects: "STATUS: done"
+    max_retries: 2
+
+  - id: architecture
+    agent: architect
+    input: |
+      Design the system architecture.
+
+      TASK: {{task}}
+      REPO: {{repo}}
+      BRANCH: {{branch}}
+
+      Define:
+      - Stack (lang, framework, DB, deployment)
+      - Module boundaries
+      - API schema (OpenAPI/GraphQL)
+      - Data models & migrations
+      - Error handling strategy
+      - Testing strategy (unit/integration/E2E)
+      - Non-functional requirements (performance, security, observability)
+
+      Save architecture docs to repo.
+
+      Reply with:
+      STATUS: done
+      ARCHITECTURE: summary of key decisions
+    expects: "STATUS: done"
+    max_retries: 2
+
+  - id: setup
+    agent: setup
+    input: |
+      Initialize development environment.
+
+      TASK: {{task}}
+      REPO: {{repo}}
+      BRANCH: {{branch}}
+
+      Setup:
+      - Build system
+      - Type checker
+      - Linter + formatter
+      - Test runners (unit/integration/E2E)
+      - CI pipeline
+      - progress.txt with Codebase Patterns section
+
+      Run baseline build and tests.
+
+      Reply with:
+      STATUS: done
+      BUILD_CMD: build command
+      TEST_CMD: test command
+      CI_NOTES: CI pipeline summary
+      BASELINE: baseline test results
+    expects: "STATUS: done"
+    max_retries: 2
+
+  - id: implement
+    agent: developer
+    type: loop
+    loop:
+      context_key: stories
+      iterate_over: "{{stories}}"
+    input: |
+      Implement one story in a fresh session.
+
+      TASK: {{task}}
+      REPO: {{repo}}
+      BRANCH: {{branch}}
+      BUILD_CMD: {{build_cmd}}
+      TEST_CMD: {{test_cmd}}
+
+      CURRENT STORY:
+      {{current_story}}
+
+      COMPLETED STORIES:
+      {{completed_stories}}
+
+      STORIES REMAINING: {{remaining_story_count}}
+
+      Instructions:
+      1. Read progress.txt (Codebase Patterns section)
+      2. Pull latest
+      3. Implement this story only
+      4. Write tests
+      5. Run typecheck/build/tests
+      6. Commit: feat: <story-id> - <story-title>
+      7. Update progress.txt with patterns and decisions
+
+      Reply with:
+      STATUS: done
+      CHANGES: what you implemented
+      TESTS: what tests you wrote
+    expects: "STATUS: done"
+    max_retries: 2
+
+  - id: verify
+    agent: verifier
+    type: loop
+    loop:
+      context_key: stories
+      iterate_over: "{{stories}}"
+    input: |
+      Verify this story meets acceptance criteria.
+
+      STORY: {{current_story}}
+      DEVELOPER OUTPUT: {{implement_output}}
+
+      Check:
+      - Code exists and is functional
+      - Acceptance criteria met
+      - Tests included and passing
+      - Typecheck passes
+      - No blocking TODOs
+
+      Reply with:
+      STATUS: done
+      VERIFIED: confirmation
+      
+      OR if issues found:
+      STATUS: retry
+      ISSUES: list of problems
+    expects: "STATUS: done"
+    max_retries: 2
+
+  - id: integration-test
+    agent: tester
+    input: |
+      Run full integration and E2E test suite.
+
+      REPO: {{repo}}
+      BRANCH: {{branch}}
+      TEST_CMD: {{test_cmd}}
+
+      Validate:
+      - All major flows end-to-end
+      - API correctness
+      - Data consistency
+      - Error handling
+      - Authentication flows
+      - Performance baseline
+
+      Reply with:
+      STATUS: done
+      RESULTS: test summary
+      
+      OR if failures:
+      STATUS: retry
+      FAILURES: details
+    expects: "STATUS: done"
+    max_retries: 2
+
+  - id: security-review
+    agent: security
+    input: |
+      Perform security review.
+
+      REPO: {{repo}}
+      BRANCH: {{branch}}
+
+      Scan for:
+      - Dependency vulnerabilities
+      - Secrets exposure
+      - Auth logic issues
+      - Insecure config defaults
+      - Sensitive data in logs
+
+      Reply with:
+      STATUS: done
+      SECURITY_REPORT: findings and required fixes
+    expects: "STATUS: done"
+    max_retries: 2
+
+  - id: pr
+    agent: developer
+    input: |
+      Create pull request.
+
+      REPO: {{repo}}
+      BRANCH: {{branch}}
+
+      Include in PR:
+      - Clear summary of what was built
+      - Architecture alignment
+      - Test summaries
+      - How to test
+
+      Use: gh pr create
+
+      Reply with:
+      STATUS: done
+      PR: URL
+    expects: "STATUS: done"
+    max_retries: 2
+
+  - id: review
+    agent: reviewer
+    input: |
+      Review the pull request.
+
+      PR: {{pr}}
+
+      Assess:
+      - Code correctness
+      - Readability
+      - Performance implications
+      - Security/safety
+      - Testing completeness
+      - Pattern adherence
+
+      Reply with:
+      STATUS: done
+      DECISION: approved
+      
+      OR if changes needed:
+      STATUS: retry
+      DECISION: changes_requested
+      FEEDBACK: actionable items
+    expects: "STATUS: done"
+    max_retries: 3
+
+  - id: release
+    agent: release
+    input: |
+      Release and deploy.
+
+      REPO: {{repo}}
+      BRANCH: {{branch}}
+
+      Tasks:
+      - Bump version
+      - Generate release notes
+      - Run migrations
+      - Deploy to staging → production
+      - Validate system health
+
+      Reply with:
+      STATUS: done
+      RELEASE: version
+      DEPLOYMENT: summary
+    expects: "STATUS: done"
+    max_retries: 2
+
+cron:
+  interval_ms: 300000
