@@ -104,7 +104,6 @@ steps:
 
       Reply with:
       STATUS: done
-      REPO: /path/to/repo
       BRANCH: feature-branch-name
       STORIES_JSON: [ ... array of story objects ... ]
     expects: "STATUS: done"
