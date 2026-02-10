@@ -109,8 +109,11 @@ steps:
     agent: developer
     type: loop
     loop:
-      context_key: stories
-      iterate_over: "{{stories}}"
+      over: stories
+      completion: all_done
+      fresh_session: true
+      verify_each: true
+      verify_step: verify
     input: |
       Implement bootstrap story.
 
@@ -131,8 +134,10 @@ steps:
     agent: verifier
     type: loop
     loop:
-      context_key: stories
-      iterate_over: "{{stories}}"
+      over: stories
+      completion: all_done
+      fresh_session: true
+      verify_each: false
     input: |
       Verify story.
 
