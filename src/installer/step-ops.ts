@@ -206,7 +206,7 @@ function cleanupAbandonedSteps(): void {
 
   // Find running steps that haven't been updated recently
   const abandonedSteps = db.prepare(
-    "SELECT id, step_id, run_id, retry_count, max_retries FROM steps WHERE status = 'running' AND updated_at < ?"
+    "SELECT id, step_id, run_id, retry_count, max_retries FROM steps WHERE status = 'running' AND datetime(updated_at) < datetime(?)"
   ).all(cutoff) as { id: string; step_id: string; run_id: string; retry_count: number; max_retries: number }[];
 
   for (const step of abandonedSteps) {
@@ -235,7 +235,7 @@ function cleanupAbandonedSteps(): void {
 
   // Also reset any running stories that are abandoned
   const abandonedStories = db.prepare(
-    "SELECT id, retry_count, max_retries, run_id FROM stories WHERE status = 'running' AND updated_at < ?"
+    "SELECT id, retry_count, max_retries, run_id FROM stories WHERE status = 'running' AND datetime(updated_at) < datetime(?)"
   ).all(cutoff) as { id: string; retry_count: number; max_retries: number; run_id: string }[];
 
   for (const story of abandonedStories) {
