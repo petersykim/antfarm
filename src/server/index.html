@@ -208,6 +208,12 @@ const API = '';
 let workflows = [];
 let currentWf = null;
 
+const STORAGE_KEYS = {
+  wf: 'antfarm.dashboard.workflow',
+  runFilter: 'antfarm.dashboard.runFilter',
+  theme: 'antfarm.dashboard.theme'
+};
+
 async function fetchJSON(url) {
   const r = await fetch(API + url);
   return r.json();
@@ -218,6 +224,14 @@ async function loadWorkflows() {
   workflows = data.workflows || data; // fallback for backwards compat
   const tree = data.tree || null;
   const sel = document.getElementById('wf-select');
+
+  // Restore last selections
+  let preferredWf = null;
+  try { preferredWf = localStorage.getItem(STORAGE_KEYS.wf); } catch {}
+  try {
+    const rf = localStorage.getItem(STORAGE_KEYS.runFilter);
+    if (rf && document.getElementById('run-filter')) document.getElementById('run-filter').value = rf;
+  } catch {}
 
   function buildOptions(tree, prefix = '') {
     let html = '';
@@ -245,22 +259,39 @@ async function loadWorkflows() {
   if (workflows.length === 1) {
     sel.value = workflows[0].id;
     selectWorkflow(workflows[0].id);
-  } else if (workflows.length > 1) {
-    // Auto-select workflow with active runs
+    return;
+  }
+
+  // 1) Prefer last-selected workflow (sticky across refresh)
+  if (preferredWf && workflows.find(w => w.id === preferredWf)) {
+    sel.value = preferredWf;
+    selectWorkflow(preferredWf);
+    return;
+  }
+
+  // 2) Otherwise auto-select workflow with active runs
+  if (workflows.length > 1) {
     try {
       for (const w of workflows) {
         const runs = await fetchJSON(`/api/runs?workflow=${w.id}`);
         const active = runs.find(r => r.status === 'running' || r.status === 'pending');
-        if (active) { sel.value = w.id; selectWorkflow(w.id); break; }
+        if (active) { sel.value = w.id; selectWorkflow(w.id); return; }
       }
     } catch {}
   }
+
+  // 3) Fallback: leave unselected
 }
+
 
 function selectWorkflow(id) {
   currentWf = workflows.find(w => w.id === id) || null;
-  if (currentWf) loadRuns();
-  else document.getElementById('board').innerHTML = '<div class="empty" style="margin:auto">Select a workflow</div>';
+  if (currentWf) {
+    try { localStorage.setItem(STORAGE_KEYS.wf, currentWf.id); } catch {}
+    loadRuns();
+  } else {
+    document.getElementById('board').innerHTML = '<div class="empty" style="margin:auto">Select a workflow</div>';
+  }
 }
 
 function parseTS(ts) {
@@ -462,7 +493,10 @@ async function loadStories(runId) {
 document.getElementById('wf-select').addEventListener('change', e => selectWorkflow(e.target.value));
 const runFilterEl = document.getElementById('run-filter');
 if (runFilterEl) {
-  runFilterEl.addEventListener('change', () => { if (currentWf) loadRuns(); });
+  runFilterEl.addEventListener('change', () => {
+    try { localStorage.setItem(STORAGE_KEYS.runFilter, runFilterEl.value); } catch {}
+    if (currentWf) loadRuns();
+  });
 }
 loadWorkflows();
 setInterval(() => { if (currentWf) loadRuns(); }, 30000);
