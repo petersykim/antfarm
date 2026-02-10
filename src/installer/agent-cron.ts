@@ -71,6 +71,9 @@ export async function setupAgentCrons(workflow: WorkflowSpec): Promise<void> {
       sessionTarget: "isolated",
       agentId,
       payload: { kind: "agentTurn", message: prompt },
+      // Antfarm agent crons should not attempt to "announce" anywhere by default.
+      // Missing delivery targets cause OpenClaw cron run failures ("cron delivery target is missing").
+      delivery: { mode: "none" },
       enabled: true,
     });
 

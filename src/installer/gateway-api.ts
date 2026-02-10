@@ -94,6 +94,8 @@ export async function createAgentCronJob(job: {
   sessionTarget: string;
   agentId: string;
   payload: { kind: string; message: string };
+  // Optional delivery control. For Antfarm agent crons we default to none.
+  delivery?: { mode: "none" | "announce"; channel?: string; to?: string; bestEffort?: boolean };
   enabled: boolean;
 }): Promise<{ ok: boolean; error?: string; id?: string }> {
   // --- Try HTTP first ---
@@ -102,7 +104,7 @@ export async function createAgentCronJob(job: {
 
   // --- Fallback to CLI ---
   try {
-    const args = ["cron", "add", "--json", "--name", job.name];
+    const args = ["cron", "add", "--json", "--name", job.name, "--no-deliver"];
 
     if (job.schedule.kind === "every" && job.schedule.everyMs) {
       args.push("--every", `${job.schedule.everyMs}ms`);
@@ -139,6 +141,7 @@ async function createAgentCronJobHTTP(job: {
   sessionTarget: string;
   agentId: string;
   payload: { kind: string; message: string };
+  delivery?: { mode: "none" | "announce"; channel?: string; to?: string; bestEffort?: boolean };
   enabled: boolean;
 }): Promise<{ ok: boolean; error?: string; id?: string } | null> {
   const gateway = await getGatewayConfig();

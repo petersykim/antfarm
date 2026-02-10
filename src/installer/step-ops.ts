@@ -176,6 +176,10 @@ function parseAndInsertStories(output: string, runId: string): void {
     "INSERT INTO stories (id, run_id, story_index, story_id, title, description, acceptance_criteria, status, retry_count, max_retries, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', 0, 2, ?, ?)"
   );
 
+  const exists = db.prepare(
+    "SELECT 1 FROM stories WHERE run_id = ? AND story_id = ? LIMIT 1"
+  );
+
   const seenIds = new Set<string>();
   for (let i = 0; i < stories.length; i++) {
     const s = stories[i];
@@ -188,6 +192,11 @@ function parseAndInsertStories(output: string, runId: string): void {
       throw new Error(`STORIES_JSON has duplicate story id "${s.id}"`);
     }
     seenIds.add(s.id);
+
+    // Idempotency: skip if this run already has this story_id (prevents duplicates if STORIES_JSON is re-processed)
+    const already = exists.get(runId, s.id) as any;
+    if (already) continue;
+
     insert.run(crypto.randomUUID(), runId, i, s.id, s.title, s.description, JSON.stringify(ac), now, now);
   }
 }
