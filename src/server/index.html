@@ -186,6 +186,15 @@ select:focus{outline:none;border-color:#8ECFC0}
 <header>
   <h1><span>antfarm</span> dashboard</h1>
   <select id="wf-select"><option value="">Loading...</option></select>
+
+  <label for="run-filter" style="color:rgba(255,255,255,.85);font-size:12px;margin-left:8px">Runs</label>
+  <select id="run-filter" style="background:rgba(0,0,0,.08);border:1px solid rgba(255,255,255,.25);color:#fff;padding:6px 8px;border-radius:8px;font-size:12px">
+    <option value="active">Active only</option>
+    <option value="48h" selected>Hide finished &gt; 48h</option>
+    <option value="24h">Hide finished &gt; 24h</option>
+    <option value="all">Show all</option>
+  </select>
+
   <button class="theme-toggle" id="theme-toggle" title="Toggle light/dark mode" aria-label="Toggle light/dark mode">☀️</button>
   <span class="refresh-note" id="refresh-note">Auto-refresh: 30s</span>
 </header>
@@ -254,10 +263,50 @@ function selectWorkflow(id) {
   else document.getElementById('board').innerHTML = '<div class="empty" style="margin:auto">Select a workflow</div>';
 }
 
+function parseTS(ts) {
+  if (!ts) return null;
+  // Space-form timestamps are UTC (see formatTS)
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(ts)) {
+    const d = new Date(ts.replace(' ', 'T') + 'Z');
+    return isNaN(d.getTime()) ? null : d;
+  }
+  const d = new Date(ts);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function isTerminalStatus(status) {
+  return ['completed','cancelled','canceled','failed','error','done','success'].includes((status || '').toLowerCase());
+}
+
+function filterRunsForView(runs) {
+  const sel = document.getElementById('run-filter');
+  const mode = sel ? sel.value : '48h';
+  if (mode === 'all') return runs;
+
+  const now = Date.now();
+  const ageLimitMs = mode === '24h' ? 24*60*60*1000 : 48*60*60*1000;
+
+  return (runs || []).filter(r => {
+    const st = (r.status || '').toLowerCase();
+    if (mode === 'active') {
+      return st === 'running' || st === 'pending' || st === 'waiting' || st === 'blocked';
+    }
+
+    // Hide terminal runs older than ageLimit
+    if (isTerminalStatus(st)) {
+      const dt = parseTS(r.updated_at || r.created_at);
+      if (!dt) return true; // if unknown, keep visible
+      return (now - dt.getTime()) <= ageLimitMs;
+    }
+
+    return true;
+  });
+}
+
 async function loadRuns() {
   if (!currentWf) return;
   const runs = await fetchJSON(`/api/runs?workflow=${currentWf.id}`);
-  renderBoard(currentWf, runs);
+  renderBoard(currentWf, filterRunsForView(runs));
 }
 
 function getActiveStepId(run) {
@@ -405,6 +454,10 @@ async function loadStories(runId) {
 }
 
 document.getElementById('wf-select').addEventListener('change', e => selectWorkflow(e.target.value));
+const runFilterEl = document.getElementById('run-filter');
+if (runFilterEl) {
+  runFilterEl.addEventListener('change', () => { if (currentWf) loadRuns(); });
+}
 loadWorkflows();
 setInterval(() => { if (currentWf) loadRuns(); }, 30000);
 
