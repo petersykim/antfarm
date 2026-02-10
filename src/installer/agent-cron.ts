@@ -24,21 +24,26 @@ Step 2 — If JSON is returned, it contains: {"stepId": "...", "runId": "...", "
 Save the stepId — you'll need it to report completion.
 The "input" field contains your FULLY RESOLVED task instructions. Read it carefully and DO the work.
 
-Step 3 — Do the work described in the input. Format your output with KEY: value lines as specified.
+Step 3 — Do the work described in the input.
+
+CRITICAL OUTPUT RULE:
+- Your output MUST satisfy the step's expects requirement (e.g. it might require the exact line STATUS: done).
+- Follow the step instructions for required KEY: value lines. Do NOT output generic placeholders.
 
 Step 4 — MANDATORY: Report completion (do this IMMEDIATELY after finishing the work):
 \`\`\`
 cat <<'ANTFARM_EOF' > /tmp/antfarm-step-output.txt
+# IMPORTANT: include EXACT required lines from the step instructions.
+# Example only (do not blindly copy):
 STATUS: done
-CHANGES: what you did
-TESTS: what tests you ran
+KEY: value
 ANTFARM_EOF
 cat /tmp/antfarm-step-output.txt | node ${cli} step complete "<stepId>"
 \`\`\`
 
-If the work FAILED:
+If the work FAILED (including if you need a retry, e.g. you would output STATUS: retry):
 \`\`\`
-node ${cli} step fail "<stepId>" "description of what went wrong"
+node ${cli} step fail "<stepId>" "description of what went wrong / what needs retry"
 \`\`\`
 
 RULES:

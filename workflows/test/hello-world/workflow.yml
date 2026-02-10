@@ -1,0 +1,62 @@
+id: hello-world
+name: Hello World (Antfarm)
+version: 1
+description: |
+  Minimal workflow to validate end-to-end: cron → session spawn → step claim → step complete → advance.
+
+# Faster polling for debugging
+cron:
+  interval_ms: 30000
+
+agents:
+  - id: step1
+    name: Step 1
+    role: analysis
+    description: Emits a single structured line.
+    workspace:
+      baseDir: agents/step1
+      files:
+        AGENTS.md: agents/step1/AGENTS.md
+
+  - id: step2
+    name: Step 2
+    role: analysis
+    description: Verifies context passed from step1.
+    workspace:
+      baseDir: agents/step2
+      files:
+        AGENTS.md: agents/step2/AGENTS.md
+
+steps:
+  - id: step1
+    agent: step1
+    input: |
+      This is a hello-world workflow.
+
+      TASK: {{task}}
+
+      Reply with exactly:
+      STATUS: done
+      HELLO: world
+    expects: "STATUS: done"
+    max_retries: 1
+
+  - id: step2
+    agent: step2
+    input: |
+      Verify that the run context includes hello=world from step1.
+
+      TASK: {{task}}
+      HELLO: {{hello}}
+
+      If HELLO is exactly "world", reply:
+      STATUS: done
+      VERIFIED: yes
+
+      Otherwise reply:
+      STATUS: retry
+      ISSUE: missing or wrong HELLO
+    expects: "STATUS: done"
+    max_retries: 1
+    on_fail:
+      retry_step: step1

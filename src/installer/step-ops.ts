@@ -369,6 +369,27 @@ export function claimStep(agentId: string): ClaimResult {
 
 // ── Complete ────────────────────────────────────────────────────────
 
+function expectsSatisfied(output: string, expects: string): boolean {
+  const exp = (expects ?? "").trim();
+  if (!exp) return true;
+
+  // Allow regex format: /.../flags
+  if (exp.startsWith("/") && exp.lastIndexOf("/") > 0) {
+    const last = exp.lastIndexOf("/");
+    const pattern = exp.slice(1, last);
+    const flags = exp.slice(last + 1);
+    try {
+      const re = new RegExp(pattern, flags);
+      return re.test(output);
+    } catch {
+      // fall back to substring match
+    }
+  }
+
+  return output.includes(exp);
+}
+
+
 /**
  * Complete a step: save output, merge context, advance pipeline.
  */
@@ -376,10 +397,17 @@ export function completeStep(stepId: string, output: string): { advanced: boolea
   const db = getDb();
 
   const step = db.prepare(
-    "SELECT id, run_id, step_id, step_index, type, loop_config, current_story_id FROM steps WHERE id = ?"
-  ).get(stepId) as { id: string; run_id: string; step_id: string; step_index: number; type: string; loop_config: string | null; current_story_id: string | null } | undefined;
+    "SELECT id, run_id, step_id, step_index, type, loop_config, current_story_id, expects FROM steps WHERE id = ?"
+  ).get(stepId) as { id: string; run_id: string; step_id: string; step_index: number; type: string; loop_config: string | null; current_story_id: string | null; expects: string } | undefined;
 
   if (!step) throw new Error(`Step not found: ${stepId}`);
+
+  // Enforce expects: if output doesn't satisfy the step's expects string, treat as a failure
+  // so the step can retry instead of silently advancing with bad state.
+  if (step.expects && !expectsSatisfied(output, step.expects)) {
+    failStep(stepId, `Output did not satisfy expects: ${step.expects}. Output begins: ${output.slice(0, 200)}`);
+    return { advanced: false, runCompleted: false };
+  }
 
   // Merge KEY: value lines into run context
   const run = db.prepare("SELECT context FROM runs WHERE id = ?").get(step.run_id) as { context: string };
