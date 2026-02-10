@@ -192,15 +192,49 @@ interface ClaimResult {
   resolvedInput?: string;
 }
 
+const STEP_STALL_MINUTES = 2;
+
 /**
  * Find and claim a pending step for an agent, returning the resolved input.
+ * Also handles re-claiming stalled "running" steps that haven't produced output.
  */
 export function claimStep(agentId: string): ClaimResult {
   const db = getDb();
 
-  const step = db.prepare(
+  // First: try to find a genuinely pending step
+  let step = db.prepare(
     "SELECT id, run_id, input_template, type, loop_config FROM steps WHERE agent_id = ? AND status = 'pending' LIMIT 1"
   ).get(agentId) as { id: string; run_id: string; input_template: string; type: string; loop_config: string | null } | undefined;
+
+  // Second: if no pending step, check for stalled "running" steps
+  // A step is stalled if it's been "running" for > STEP_STALL_MINUTES with no output
+  if (!step) {
+    const stalledStep = db.prepare(
+      `SELECT id, run_id, input_template, type, loop_config, output, current_story_id FROM steps
+       WHERE agent_id = ? AND status = 'running'
+       AND (output IS NULL OR output = '')
+       AND datetime(updated_at) < datetime('now', '-${STEP_STALL_MINUTES} minutes')
+       LIMIT 1`
+    ).get(agentId) as { id: string; run_id: string; input_template: string; type: string; loop_config: string | null; output: string | null; current_story_id: string | null } | undefined;
+
+    if (stalledStep) {
+      // Reset story status if this is a loop step with a current story
+      if (stalledStep.type === 'loop' && stalledStep.current_story_id) {
+        // Reset the story back to pending so it can be re-claimed
+        db.prepare(
+          "UPDATE stories SET status = 'pending', updated_at = datetime('now', 'utc') WHERE id = ? AND status = 'running'"
+        ).run(stalledStep.current_story_id);
+      }
+
+      // Re-claim the stalled step by updating timestamp (keeps status as 'running')
+      db.prepare(
+        "UPDATE steps SET updated_at = datetime('now', 'utc'), current_story_id = NULL WHERE id = ?"
+      ).run(stalledStep.id);
+
+      // Use the stalled step as our target
+      step = stalledStep;
+    }
+  }
 
   if (!step) return { found: false };
 
