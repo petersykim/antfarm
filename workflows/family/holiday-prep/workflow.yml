@@ -85,7 +85,7 @@ steps:
       Reply with:
       STATUS: done
       TARGET_MONTH: [Month YYYY]
-      HOLIDAYS_JSON: [array of holiday story objects]
+      STORIES_JSON: [array of holiday story objects]
     expects: "STATUS: done"
     max_retries: 2
     on_fail:
@@ -95,17 +95,17 @@ steps:
     agent: researcher
     type: loop
     loop:
-      over: holidays
+      over: stories
       completion: all_done
       fresh_session: true
     input: |
-      Research content for this holiday.
+      Research content for this holiday (one story at a time).
 
       TASK: {{task}}
       TARGET_MONTH: {{target_month}}
 
-      CURRENT HOLIDAY:
-      {{current_holiday}}
+      CURRENT HOLIDAY (from story):
+      {{current_story}}
 
       Research and gather:
       1. Things to do — activities, traditions, crafts
@@ -132,7 +132,7 @@ steps:
     agent: formatter
     type: loop
     loop:
-      over: holidays
+      over: stories
       completion: all_done
       fresh_session: true
       verify_each: true
@@ -141,7 +141,8 @@ steps:
       Format holiday content into Apple Notes HTML.
 
       TASK: {{task}}
-      CURRENT_HOLIDAY: {{current_holiday}}
+      CURRENT_HOLIDAY (from story):
+      {{current_story}}
 
       CONTENT:
       THINGS_TO_DO: {{things_to_do}}
